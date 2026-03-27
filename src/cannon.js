@@ -18,7 +18,6 @@ export class Cannon {
     this.range = 35;
     this.fireRate = 800 + Math.random() * 400; 
     this.lastShotTime = 0;
-    this.firingArc = Math.PI / 2; 
   }
 
   update(currentTime, enemies, projectiles) {
@@ -26,9 +25,6 @@ export class Cannon {
 
     const worldPos = new THREE.Vector3();
     this.mesh.getWorldPosition(worldPos);
-
-    const forward = new THREE.Vector3(0, 0, -1);
-    forward.applyQuaternion(this.parent.quaternion);
 
     let nearestEnemy = null;
     let minDist = this.range;
@@ -38,13 +34,8 @@ export class Cannon {
       
       const dist = worldPos.distanceTo(enemy.mesh.position);
       if (dist < minDist) {
-        const toEnemy = new THREE.Vector3().subVectors(enemy.mesh.position, worldPos).normalize();
-        const angle = forward.angleTo(toEnemy);
-
-        if (angle < this.firingArc / 2) {
-          minDist = dist;
-          nearestEnemy = enemy;
-        }
+        minDist = dist;
+        nearestEnemy = enemy;
       }
     }
 

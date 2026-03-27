@@ -147,6 +147,7 @@ const projectiles = [];
 const friendlyUnits = [];
 let velocity = new THREE.Vector3();
 const keys = { w: false, a: false, s: false, d: false };
+const targetCameraPos = new THREE.Vector3();
 
 // --- Event Listeners ---
 window.addEventListener('keydown', (e) => { if (keys.hasOwnProperty(e.key.toLowerCase())) keys[e.key.toLowerCase()] = true; });
@@ -210,7 +211,7 @@ function animate(time) {
   } else {
     upBtns.style.display = 'none';
     compCont.style.display = 'flex';
-    const screenAngle = Math.atan2(basePosition.x - player.position.x, basePosition.z - player.position.z);
+    const screenAngle = Math.atan2(basePosition.x - player.position.x, player.position.z - basePosition.z);
     baseArrow.style.transform = `rotate(${screenAngle}rad)`;
   }
 
@@ -237,8 +238,8 @@ function animate(time) {
   }
 
   if (!isDead) {
-    const targetPos = new THREE.Vector3(player.position.x, 35, player.position.z + 25);
-    camera.position.lerp(targetPos, 0.05);
+    targetCameraPos.set(player.position.x, 35, player.position.z + 25);
+    camera.position.lerp(targetCameraPos, 0.05);
     camera.lookAt(player.position);
   }
   composer.render();
