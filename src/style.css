@@ -33,13 +33,11 @@ canvas {
 }
 
 /* Upgrade Menu */
-#upgrade-menu {
+#upgrade-menu, #base-upgrade-menu {
   position: absolute;
   bottom: 20px;
-  right: 20px;
   width: 200px;
   background: rgba(0, 10, 20, 0.85);
-  border-left: 3px solid #00ffff;
   padding: 15px 15px 35px 15px;
   color: #fff;
   backdrop-filter: blur(10px);
@@ -48,14 +46,32 @@ canvas {
   align-items: center;
 }
 
-#upgrade-menu h2 {
+#upgrade-menu {
+  right: 20px;
+  border-left: 3px solid #00ffff;
+}
+
+#base-upgrade-menu {
+  left: 20px;
+  border-right: 3px solid #00ff55;
+  display: none;
+}
+
+#upgrade-menu h2, #base-upgrade-menu h2 {
   margin: 0 0 10px 0;
   font-size: 0.8rem;
   font-weight: 300;
   letter-spacing: 2px;
-  color: #00ffff;
   text-transform: uppercase;
   width: 100%;
+}
+
+#upgrade-menu h2 {
+  color: #00ffff;
+}
+
+#base-upgrade-menu h2 {
+  color: #00ff55;
 }
 
 #stats {

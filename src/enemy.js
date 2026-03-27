@@ -91,19 +91,35 @@ export class Enemy {
     this.material.dispose();
   }
 
-  update(playerPos, allProjectiles, camera) {
+  update(playerTarget, allProjectiles, camera, friendlyUnits = []) {
     if (this.isDead) return;
 
     if (this.healthBarGroup.visible) {
       this.healthBarGroup.quaternion.copy(camera.quaternion);
     }
 
-    const distToPlayer = this.mesh.position.distanceTo(playerPos);
+    let target = null;
+    let minDist = Infinity;
+
+    if (!playerTarget.isDead) {
+      minDist = this.mesh.position.distanceTo(playerTarget.mesh.position);
+      target = playerTarget.mesh;
+    }
+
+    for (const unit of friendlyUnits) {
+      if (unit.isDead) continue;
+      const dist = this.mesh.position.distanceTo(unit.mesh.position);
+      if (dist < minDist) {
+        minDist = dist;
+        target = unit.mesh;
+      }
+    }
     
-    if (distToPlayer < this.aggroRange) {
-      const dir = new THREE.Vector3().subVectors(playerPos, this.mesh.position).normalize();
+    if (target && minDist < this.aggroRange) {
+      const targetPos = target.position;
+      const dir = new THREE.Vector3().subVectors(targetPos, this.mesh.position).normalize();
       this.mesh.position.addScaledVector(dir, this.speed);
-      this.mesh.lookAt(playerPos);
+      this.mesh.lookAt(targetPos);
 
       const currentTime = performance.now();
       if (currentTime - this.lastShotTime > this.shootInterval) {
@@ -120,6 +136,6 @@ export class Enemy {
       this.mesh.rotation.y = Math.PI; 
     }
 
-    if (Math.abs(this.mesh.position.z - playerPos.z) > 150) this.die();
+    if (Math.abs(this.mesh.position.z - (playerTarget.mesh ? playerTarget.mesh.position.z : 0)) > 150) this.die();
   }
 }

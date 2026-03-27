@@ -18,19 +18,49 @@ export class FriendlyUnit {
     this.mesh.add(this.cannonMesh);
 
     // Stats
-    this.health = 5;
+    this.maxHealth = 10;
+    this.health = this.maxHealth;
     this.speed = 0.03;
     this.isDead = false;
     this.aggroRange = 40;
     this.lastShotTime = 0;
     this.shootInterval = 3000;
 
+    // Mini Health Bar UI
+    this.healthBarGroup = new THREE.Group();
+    const size = 1.2;
+    const bgGeo = new THREE.PlaneGeometry(size, 0.15);
+    const bgMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.5 });
+    this.hpBg = new THREE.Mesh(bgGeo, bgMat);
+    
+    const fgGeo = new THREE.PlaneGeometry(size, 0.15);
+    const fgMat = new THREE.MeshBasicMaterial({ color: 0x0088ff });
+    this.hpFg = new THREE.Mesh(fgGeo, fgMat);
+    this.hpFg.position.z = 0.01;
+    
+    this.healthBarGroup.add(this.hpBg);
+    this.healthBarGroup.add(this.hpFg);
+    this.healthBarGroup.position.y = 1.2;
+    this.healthBarGroup.visible = false;
+    this.mesh.add(this.healthBarGroup);
+
     scene.add(this.mesh);
   }
 
   takeDamage(amount) {
     this.health -= amount;
-    if (this.health <= 0) this.die();
+    this.healthBarGroup.visible = true;
+    
+    const healthPercent = Math.max(0, this.health / this.maxHealth);
+    this.hpFg.scale.x = healthPercent;
+    this.hpFg.position.x = -(1 - healthPercent) * (1.2 / 2); // Corrected for bar width (size = 1.2)
+
+    if (this.health <= 0) {
+      this.die();
+    } else {
+      this.material.emissiveIntensity = 1;
+      setTimeout(() => { if (!this.isDead) this.material.emissiveIntensity = 0.3; }, 50);
+    }
   }
 
   die() {
@@ -40,8 +70,12 @@ export class FriendlyUnit {
     this.material.dispose();
   }
 
-  update(enemies, allProjectiles) {
+  update(enemies, allProjectiles, camera) {
     if (this.isDead) return;
+
+    if (this.healthBarGroup.visible && camera) {
+      this.healthBarGroup.quaternion.copy(camera.quaternion);
+    }
 
     let nearestEnemy = null;
     let minDist = this.aggroRange;

@@ -27,25 +27,61 @@ export class BaseStation {
 
     // Defensive cannons
     this.cannons = [];
-    const cannonGeo = new THREE.BoxGeometry(0.4, 0.4, 1.5);
-    const cannonMat = new THREE.MeshStandardMaterial({ color: 0xaaaaaa });
+    this.cannonGeo = new THREE.BoxGeometry(0.4, 0.4, 1.5);
+    this.cannonMat = new THREE.MeshStandardMaterial({ color: 0xaaaaaa });
     
     for (let i = 0; i < 12; i++) {
-      const angle = (i / 12) * Math.PI * 2;
-      const cannon = new THREE.Mesh(cannonGeo, cannonMat);
-      const radius = 6;
-      cannon.position.set(Math.cos(angle) * radius, 0, Math.sin(angle) * radius);
-      
-      const pivot = new THREE.Group();
-      pivot.position.copy(cannon.position);
-      pivot.add(cannon);
-      cannon.position.set(0, 0, 0.7); 
-      this.mesh.add(pivot);
-      this.cannons.push(pivot);
+      this.addCannonMesh(i, 12);
+    }
+
+    // Healing Beam Visual
+    const beamGeo = new THREE.CylinderGeometry(0.2, 0.2, 1, 8);
+    const beamMat = new THREE.MeshStandardMaterial({ 
+      color: 0x00ff88, 
+      emissive: 0x00ff88, 
+      emissiveIntensity: 2,
+      transparent: true,
+      opacity: 0.6
+    });
+    this.healingBeam = new THREE.Mesh(beamGeo, beamMat);
+    this.healingBeam.visible = false;
+    this.scene.add(this.healingBeam);
+  }
+
+  addCannonMesh(index, total) {
+    const angle = (index / total) * Math.PI * 2;
+    const cannon = new THREE.Mesh(this.cannonGeo, this.cannonMat);
+    const radius = 6;
+    cannon.position.set(Math.cos(angle) * radius, 0, Math.sin(angle) * radius);
+    
+    const pivot = new THREE.Group();
+    pivot.position.copy(cannon.position);
+    pivot.add(cannon);
+    cannon.position.set(0, 0, 0.7); 
+    this.mesh.add(pivot);
+    this.cannons.push(pivot);
+  }
+
+  addCannon() {
+    // Add 2 more cannons
+    const currentCount = this.cannons.length;
+    // Remove old cannons and redistribute or just add new ones?
+    // User says "increase cannons", let's just add more at new angles or just add 2 more.
+    // Redrawing all might be cleaner for spacing.
+    this.cannons.forEach(c => this.mesh.remove(c));
+    this.cannons = [];
+    const newTotal = currentCount + 2;
+    for (let i = 0; i < newTotal; i++) {
+      this.addCannonMesh(i, newTotal);
     }
   }
 
+  upgradeSpawnRate() {
+    this.spawnInterval = Math.max(2000, this.spawnInterval - 2000);
+  }
+
   update(playerPos, enemies, projectiles, currentTime, friendlyUnits) {
+    this.mesh.rotation.y += 0.002;
     const distToPlayer = this.mesh.position.distanceTo(playerPos);
     
     // Auto-fire at enemies

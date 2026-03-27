@@ -51,6 +51,17 @@ upgradeMenu.innerHTML = `
 `;
 document.body.appendChild(upgradeMenu);
 
+const baseUpgradeMenu = document.createElement('div');
+baseUpgradeMenu.id = 'base-upgrade-menu';
+baseUpgradeMenu.innerHTML = `
+  <h2>Base Upgrades</h2>
+  <div id="base-upgrade-buttons">
+    <button id="base-up-cannons" class="upgrade-btn">Add Base Cannons (+2)</button>
+    <button id="base-up-spawn" class="upgrade-btn">Upgrade Spawn Rate</button>
+  </div>
+`;
+document.body.appendChild(baseUpgradeMenu);
+
 const upBtns = document.getElementById('upgrade-buttons');
 const compCont = document.getElementById('compass-container');
 const baseArrow = document.getElementById('base-arrow');
@@ -141,6 +152,9 @@ document.getElementById('up-tier2').onclick = () => {
   }
 };
 
+document.getElementById('base-up-cannons').onclick = () => base.addCannon();
+document.getElementById('base-up-spawn').onclick = () => base.upgradeSpawnRate();
+
 // --- Loop Variables ---
 const enemies = [];
 const projectiles = [];
@@ -206,17 +220,25 @@ function animate(time) {
   
   if (isNearBase && !isDead) {
     upBtns.style.display = 'block';
+    baseUpgradeMenu.style.display = 'flex';
     compCont.style.display = 'none';
     playerHealth = Math.min(maxPlayerHealth, playerHealth + 0.05); 
   } else {
     upBtns.style.display = 'none';
+    baseUpgradeMenu.style.display = 'none';
     compCont.style.display = 'flex';
     const screenAngle = Math.atan2(basePosition.x - player.position.x, player.position.z - basePosition.z);
     baseArrow.style.transform = `rotate(${screenAngle}rad)`;
   }
 
+  const playerTarget = {
+    get isDead() { return isDead; },
+    get mesh() { return player; },
+    takeDamage: (amt) => onPlayerHit(amt)
+  };
+
   for (let i = friendlyUnits.length - 1; i >= 0; i--) {
-    friendlyUnits[i].update(enemies, projectiles);
+    friendlyUnits[i].update(enemies, projectiles, camera);
     if (friendlyUnits[i].isDead) friendlyUnits.splice(i, 1);
   }
 
@@ -226,14 +248,17 @@ function animate(time) {
   document.getElementById('stats').innerText = `Dist: ${distPushed}m | Zone: ${waveManager.waveLevel}`;
 
   for (let i = enemies.length - 1; i >= 0; i--) { 
-    enemies[i].update(player.position, projectiles, camera); 
+    enemies[i].update(playerTarget, projectiles, camera, friendlyUnits); 
     if (enemies[i].isDead) enemies.splice(i, 1); 
   }
 
   for (let i = projectiles.length - 1; i >= 0; i--) { 
     const p = projectiles[i];
-    if (p.isEnemy) p.update(player, onPlayerHit);
-    else p.update(enemies); 
+    if (p.isEnemy) {
+      p.update([playerTarget, ...friendlyUnits]);
+    } else {
+      p.update(enemies); 
+    }
     if (p.isRemoved) projectiles.splice(i, 1); 
   }
 
