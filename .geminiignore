@@ -1,0 +1,20 @@
+# Gemini CLI ignore file
+# Matches .gitignore patterns where applicable
+
+node_modules/
+dist/
+dist-ssr/
+*.log
+.DS_Store
+.vscode/
+.idea/
+.git/
+
+# Build and lock files
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Assets (binary files can be large/unreadable)
+src/assets/
+public/

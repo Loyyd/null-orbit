@@ -1,37 +1,43 @@
 import * as THREE from 'three';
 
 export class Projectile {
-  constructor(scene, spawnPosition, direction) {
+  constructor(scene, spawnPosition, direction, color = 0xff0000, isEnemy = false, damage = 1) {
     this.scene = scene;
-    this.geometry = new THREE.SphereGeometry(0.15, 8, 8);
-    this.material = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+    this.isEnemy = isEnemy;
+    this.damage = damage;
+    
+    this.geometry = new THREE.CapsuleGeometry(0.1, 0.8, 4, 8);
+    this.material = new THREE.MeshBasicMaterial({ color: color });
+    
     this.mesh = new THREE.Mesh(this.geometry, this.material);
     this.mesh.position.copy(spawnPosition);
+    this.mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction.clone().normalize());
+    
     this.direction = direction.clone().normalize();
-    this.speed = 0.5;
+    this.speed = isEnemy ? 0.175 : 0.6; 
     this.isRemoved = false;
-    this.damage = 1;
 
     scene.add(this.mesh);
   }
 
-  update(enemies) {
+  update(targets, onHit) {
     if (this.isRemoved) return;
     this.mesh.position.addScaledVector(this.direction, this.speed);
 
-    // Basic collision detection
-    for (const enemy of enemies) {
-      if (!enemy.isDead && this.mesh.position.distanceTo(enemy.mesh.position) < 1) {
-        enemy.takeDamage(this.damage);
-        this.remove();
-        break;
+    if (Array.isArray(targets)) {
+      for (const target of targets) {
+        if (!target.isDead && this.mesh.position.distanceTo(target.mesh.position) < 1.5) {
+          target.takeDamage(this.damage);
+          this.remove();
+          break;
+        }
       }
-    }
-
-    // Auto-remove if it travels too far
-    if (this.mesh.position.length() > 100) {
+    } else if (targets && this.mesh.position.distanceTo(targets.position) < 1.5) {
+      onHit(this.damage);
       this.remove();
     }
+
+    if (this.mesh.position.length() > 400) this.remove();
   }
 
   remove() {

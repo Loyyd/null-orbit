@@ -1,0 +1,63 @@
+import * as THREE from 'three';
+import { Projectile } from './projectile';
+
+export class Cannon {
+  constructor(scene, parent, offset) {
+    this.scene = scene;
+    this.parent = parent; 
+    this.offset = offset;
+    
+    // Visuals
+    const cannonGeo = new THREE.SphereGeometry(0.2, 16, 16);
+    const cannonMat = new THREE.MeshStandardMaterial({ color: 0x888888 });
+    this.mesh = new THREE.Mesh(cannonGeo, cannonMat);
+    this.mesh.position.copy(offset);
+    this.parent.add(this.mesh);
+
+    // Stats
+    this.range = 35;
+    this.fireRate = 800 + Math.random() * 400; 
+    this.lastShotTime = 0;
+    this.firingArc = Math.PI / 2; 
+  }
+
+  update(currentTime, enemies, projectiles) {
+    if (currentTime - this.lastShotTime < this.fireRate) return;
+
+    const worldPos = new THREE.Vector3();
+    this.mesh.getWorldPosition(worldPos);
+
+    const forward = new THREE.Vector3(0, 0, -1);
+    forward.applyQuaternion(this.parent.quaternion);
+
+    let nearestEnemy = null;
+    let minDist = this.range;
+
+    for (const enemy of enemies) {
+      if (enemy.isDead) continue;
+      
+      const dist = worldPos.distanceTo(enemy.mesh.position);
+      if (dist < minDist) {
+        const toEnemy = new THREE.Vector3().subVectors(enemy.mesh.position, worldPos).normalize();
+        const angle = forward.angleTo(toEnemy);
+
+        if (angle < this.firingArc / 2) {
+          minDist = dist;
+          nearestEnemy = enemy;
+        }
+      }
+    }
+
+    if (nearestEnemy) {
+      const dir = new THREE.Vector3().subVectors(nearestEnemy.mesh.position, worldPos).normalize();
+      projectiles.push(new Projectile(this.scene, worldPos, dir, 0x00ffff, false, 2));
+      this.lastShotTime = currentTime;
+    }
+  }
+
+  remove() {
+    this.parent.remove(this.mesh);
+    this.mesh.geometry.dispose();
+    this.mesh.material.dispose();
+  }
+}
