@@ -14,7 +14,7 @@ export class Projectile {
     this.mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction.clone().normalize());
     
     this.direction = direction.clone().normalize();
-    this.speed = isEnemy ? 0.175 : 0.6; 
+    this.speed = isEnemy ? 0.0875 : 0.3; 
     this.isRemoved = false;
 
     scene.add(this.mesh);

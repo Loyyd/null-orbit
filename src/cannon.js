@@ -16,7 +16,7 @@ export class Cannon {
 
     // Stats
     this.range = 35;
-    this.fireRate = 800 + Math.random() * 400; 
+    this.fireRate = 1600 + Math.random() * 800; 
     this.lastShotTime = 0;
   }
 
@@ -41,6 +41,13 @@ export class Cannon {
 
     if (nearestEnemy) {
       const dir = new THREE.Vector3().subVectors(nearestEnemy.mesh.position, worldPos).normalize();
+      
+      // Scatter effect (approx 90% precision)
+      const scatter = 0.12;
+      dir.x += (Math.random() - 0.5) * scatter;
+      dir.z += (Math.random() - 0.5) * scatter;
+      dir.normalize();
+
       projectiles.push(new Projectile(this.scene, worldPos, dir, 0x00ffff, false, 2));
       this.lastShotTime = currentTime;
     }

@@ -9,9 +9,9 @@ export class Enemy {
     // Base stats
     this.maxHealth = type === 'tank' ? 15 : 3;
     this.health = this.maxHealth;
-    this.speed = type === 'tank' ? 0.015 : 0.04;
+    this.speed = type === 'tank' ? 0.0075 : 0.02;
     this.aggroRange = type === 'tank' ? 45 : 35;
-    this.shootInterval = type === 'tank' ? 2400 : 4000;
+    this.shootInterval = type === 'tank' ? 4800 : 8000;
     this.damagePerShot = type === 'tank' ? 25 : 15;
 
     // Visuals based on type

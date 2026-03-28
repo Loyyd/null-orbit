@@ -5,32 +5,82 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Meshy2 - Map Editor</title>
     <style>
-        body { background: #111; color: #fff; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; margin: 0; padding: 20px; }
-        #grid { display: grid; grid-template-columns: repeat(40, 15px); gap: 1px; background: #333; padding: 1px; border: 2px solid #555; }
-        .cell { width: 15px; height: 15px; background: #222; cursor: pointer; }
-        .cell:hover { background: #444; }
-        .cell.base { background: #0088ff; box-shadow: inset 0 0 5px #00ffff; }
-        .cell.player { background: #00ff00; box-shadow: inset 0 0 5px #00ff00; }
-        .cell.obstacle { background: #ff5500; }
-        #toolbar { margin-bottom: 20px; display: flex; gap: 10px; }
-        .tool { padding: 10px 20px; background: #444; color: white; border: none; cursor: pointer; border-radius: 4px; border-bottom: 3px solid transparent; }
-        .tool.active { border-color: #00ffff; background: #555; }
-        #save-btn { padding: 10px 40px; background: #0088ff; color: white; border: none; cursor: pointer; border-radius: 4px; font-weight: bold; margin-top: 20px; }
-        #save-btn:hover { background: #0099ff; }
-        .info { margin-top: 10px; font-size: 0.8rem; color: #888; }
+        body {
+            background: #111; color: #fff; font-family: sans-serif; margin: 0; padding: 20px;
+            display: flex; gap: 20px; height: 100vh; overflow: hidden; box-sizing: border-box;
+        }
+        #sidebar {
+            width: 280px; background: #222; padding: 20px; border-radius: 8px;
+            display: flex; flex-direction: column; gap: 15px; overflow-y: auto;
+        }
+        .palette-item {
+            padding: 15px; background: #333; border: 2px solid #555; border-radius: 4px;
+            cursor: grab; display: flex; align-items: center; gap: 10px; font-weight: bold;
+        }
+        .palette-item:hover { background: #444; }
+        .palette-item[data-type="player"] { border-left: 5px solid #00ff00; }
+        .palette-item[data-type="base"] { border-left: 5px solid #0088ff; }
+        .palette-item[data-type="obstacle"] { border-left: 5px solid #ff5500; }
+        
+        .btn {
+            padding: 12px; background: #0088ff; color: white; border: none; cursor: pointer;
+            border-radius: 4px; font-weight: bold; text-align: center; text-transform: uppercase;
+        }
+        .btn:hover { background: #0099ff; }
+        
+        #editor-container {
+            flex-grow: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+            overflow: auto; background: #000; border-radius: 8px;
+        }
+        #grid-wrapper {
+            position: relative; width: 400px; height: 1200px; background: #222;
+            border: 2px solid #555; background-image:
+                linear-gradient(#333 1px, transparent 1px),
+                linear-gradient(90deg, #333 1px, transparent 1px);
+            background-size: 10px 10px; /* 40x120 grid */
+            overflow: hidden;
+        }
+        
+        .entity {
+            position: absolute; border: 2px solid white; box-sizing: border-box; cursor: grab;
+            display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: bold;
+            text-shadow: 0 0 2px black; user-select: none;
+        }
+        .entity.dragging { opacity: 0.5; z-index: 100; pointer-events: none; }
+        .entity[data-type="player"] { background: rgba(0,255,0,0.5); border-color: #00ff00; border-radius: 50%; }
+        .entity[data-type="base"] { background: rgba(0,136,255,0.5); border-color: #0088ff; }
+        .entity[data-type="obstacle"] { background: rgba(255,85,0,0.5); border-color: #ff5500; }
+        
+        .delete-zone {
+            margin-top: auto; padding: 20px; background: #500; border: 2px dashed #f00;
+            text-align: center; color: #faa; font-weight: bold; border-radius: 4px;
+        }
+        .delete-zone.dragover { background: #800; color: #fff; border-color: #fff; }
     </style>
 </head>
 <body>
-    <h2>MAP EDITOR</h2>
-    <div id="toolbar">
-        <button class="tool active" data-type="player">Player Start (Green)</button>
-        <button class="tool" data-type="base">Base (Blue)</button>
-        <button class="tool" data-type="obstacle">Obstacle (Orange)</button>
-        <button class="tool" data-type="empty">Clear</button>
+    <div id="sidebar">
+        <h2 style="margin:0 0 5px 0;">MAP EDITOR</h2>
+        <p style="font-size: 0.85rem; color: #aaa; margin-top: 0;">Drag items onto the grid. Drag from grid to DELETE zone to remove.</p>
+        
+        <div class="palette-item" draggable="true" data-type="player" data-w="2" data-h="2">Player Spawn (2x2)</div>
+        <div class="palette-item" draggable="true" data-type="base" data-w="6" data-h="6">Base (6x6)</div>
+        <div class="palette-item" draggable="true" data-type="obstacle" data-w="2" data-h="2">Small Obstacle (2x2)</div>
+        <div class="palette-item" draggable="true" data-type="obstacle" data-w="4" data-h="4">Large Obstacle (4x4)</div>
+        <div class="palette-item" draggable="true" data-type="obstacle" data-w="10" data-h="2">Wall (10x2)</div>
+        <div class="palette-item" draggable="true" data-type="obstacle" data-w="2" data-h="10">Wall (2x10)</div>
+        
+        <div class="delete-zone" id="delete-zone">Drag here to DELETE</div>
+        
+        <button class="btn" id="save-btn">Save Map & Sync Game</button>
+        <button class="btn" id="copy-btn" style="background: #444;">Copy to mapData.js</button>
     </div>
-    <div id="grid"></div>
-    <button id="save-btn">SAVE MAP</button>
-    <div class="info">Grid represents 40x40 area around the world origin.</div>
+    
+    <div id="editor-container">
+        <div id="grid-wrapper">
+            <!-- Entities will be added here -->
+        </div>
+    </div>
     <script type="module" src="/src/editor.js"></script>
 </body>
 </html>

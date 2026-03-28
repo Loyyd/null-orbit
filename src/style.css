@@ -153,3 +153,43 @@ canvas {
   letter-spacing: 1px;
   white-space: nowrap;
 }
+
+/* Shield Button */
+#shield-btn {
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  background: rgba(0, 255, 255, 0.1);
+  border: 2px solid #00ffff;
+  color: #fff;
+  font-size: 1.5rem;
+  cursor: pointer;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 0 15px rgba(0, 255, 255, 0.3);
+  transition: all 0.3s;
+  z-index: 100;
+}
+
+#shield-btn:hover {
+  background: rgba(0, 255, 255, 0.2);
+  box-shadow: 0 0 25px rgba(0, 255, 255, 0.5);
+}
+
+#shield-btn.active {
+  background: rgba(0, 255, 255, 0.6);
+  box-shadow: 0 0 30px #00ffff;
+  border-color: #fff;
+  animation: pulse-shield 1s infinite alternate;
+}
+
+@keyframes pulse-shield {
+  from { transform: translateX(-50%) scale(1); }
+  to { transform: translateX(-50%) scale(1.1); }
+}

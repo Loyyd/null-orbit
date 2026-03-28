@@ -13,7 +13,7 @@ export class WaveManager {
     this.waveLevel = 1 + Math.floor(distancePush / 80);
     
     this.spawnTimer += 1;
-    const spawnThreshold = Math.max(240, 480 - (this.waveLevel * 20)); 
+    const spawnThreshold = Math.max(480, 960 - (this.waveLevel * 40)); 
     
     if (this.spawnTimer > spawnThreshold) {
       this.spawnSquad(playerPos, enemies);
@@ -56,3 +56,4 @@ export class WaveManager {
     }
   }
 }
+

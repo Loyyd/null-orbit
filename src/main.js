@@ -56,11 +56,18 @@ baseUpgradeMenu.id = 'base-upgrade-menu';
 baseUpgradeMenu.innerHTML = `
   <h2>Base Upgrades</h2>
   <div id="base-upgrade-buttons">
-    <button id="base-up-cannons" class="upgrade-btn">Add Base Cannons (+2)</button>
+    <button id="base-up-cannons" class="upgrade-btn">Add Base Cannons (+1)</button>
     <button id="base-up-spawn" class="upgrade-btn">Upgrade Spawn Rate</button>
+    <button id="base-up-shield" class="upgrade-btn">Buy Shield Module 🛡️</button>
   </div>
 `;
 document.body.appendChild(baseUpgradeMenu);
+
+const shieldBtn = document.createElement('button');
+shieldBtn.id = 'shield-btn';
+shieldBtn.innerHTML = '🛡️';
+shieldBtn.style.display = 'none';
+document.body.appendChild(shieldBtn);
 
 const upBtns = document.getElementById('upgrade-buttons');
 const compCont = document.getElementById('compass-container');
@@ -91,13 +98,17 @@ directionalLight.position.set(50, 100, 70);
 scene.add(directionalLight);
 
 // --- Game State ---
-let acceleration = 0.0075;
-let rotationSpeed = 0.03;
+const clock = new THREE.Clock();
+let acceleration = 0.0008;
+let rotationSpeed = 0.01;
 let currentTier = 1;
 let playerHealth = 100;
 const maxPlayerHealth = 100;
 let isDead = false;
 let respawnTimer = 0;
+let hasShieldModule = false;
+let shieldActive = false;
+let shieldDuration = 0;
 
 // --- Objects ---
 const playerGeometry = new THREE.BoxGeometry(1, 0.5, 2);
@@ -105,6 +116,19 @@ const playerMaterial = new THREE.MeshStandardMaterial({ color: 0x00ff00, emissiv
 const player = new THREE.Mesh(playerGeometry, playerMaterial);
 player.position.set(mapData.playerStart.x, 0, mapData.playerStart.z);
 scene.add(player);
+
+// Shield Visual
+const shieldGeo = new THREE.SphereGeometry(2, 32, 32);
+const shieldMat = new THREE.MeshStandardMaterial({ 
+  color: 0x00ffff, 
+  transparent: true, 
+  opacity: 0.3, 
+  emissive: 0x00ffff, 
+  emissiveIntensity: 1 
+});
+const shieldMesh = new THREE.Mesh(shieldGeo, shieldMat);
+shieldMesh.visible = false;
+player.add(shieldMesh);
 
 const cannons = [];
 function addCannons(count) {
@@ -123,12 +147,13 @@ const base = new BaseStation(scene, basePosition);
 const waveManager = new WaveManager(scene);
 
 // --- Obstacles ---
-const obsGeo = new THREE.BoxGeometry(2, 2, 2);
 const obsMat = new THREE.MeshStandardMaterial({ color: 0x555555, metalness: 0.9, roughness: 0.1 }); // More asteroid-like
 mapData.obstacles.forEach(o => {
+  const w = o.w || 2;
+  const h = o.h || 2;
+  const obsGeo = new THREE.BoxGeometry(w, 2, h);
   const obstacle = new THREE.Mesh(obsGeo, obsMat);
   obstacle.position.set(o.x, 0, o.z);
-  obstacle.rotation.set(Math.random(), Math.random(), Math.random());
   scene.add(obstacle);
 });
 
@@ -141,7 +166,7 @@ scene.add(gridHelper);
 
 // --- Upgrade Listeners ---
 document.getElementById('up-cannons').onclick = () => addCannons(2);
-document.getElementById('up-speed').onclick = () => { acceleration += 0.005; rotationSpeed += 0.005; };
+document.getElementById('up-speed').onclick = () => { acceleration += 0.0025; rotationSpeed += 0.0025; };
 document.getElementById('up-tier2').onclick = () => {
   if (currentTier < 2) {
     currentTier = 2;
@@ -154,6 +179,20 @@ document.getElementById('up-tier2').onclick = () => {
 
 document.getElementById('base-up-cannons').onclick = () => base.addCannon();
 document.getElementById('base-up-spawn').onclick = () => base.upgradeSpawnRate();
+document.getElementById('base-up-shield').onclick = () => {
+  hasShieldModule = true;
+  shieldBtn.style.display = 'flex';
+  document.getElementById('base-up-shield').style.display = 'none'; // Only buy once
+};
+
+shieldBtn.onclick = () => {
+  if (hasShieldModule && !shieldActive && !isDead) {
+    shieldActive = true;
+    shieldDuration = 6; // 6 seconds
+    shieldMesh.visible = true;
+    shieldBtn.classList.add('active');
+  }
+};
 
 // --- Loop Variables ---
 const enemies = [];
@@ -172,7 +211,7 @@ window.addEventListener('resize', () => {
 });
 
 function onPlayerHit(damage) {
-  if (isDead) return;
+  if (isDead || shieldActive) return;
   playerHealth -= damage;
   player.material.emissiveIntensity = 2;
   setTimeout(() => { player.material.emissiveIntensity = 0.5; }, 100);
@@ -183,6 +222,9 @@ function triggerDeath() {
   isDead = true;
   playerHealth = 0;
   player.visible = false;
+  shieldActive = false;
+  shieldMesh.visible = false;
+  shieldBtn.classList.remove('active');
   respawnTimer = 10;
   respawnUI.style.display = 'block';
   velocity.set(0, 0, 0);
@@ -206,7 +248,19 @@ function animate(time) {
     if (keys.w) velocity.addScaledVector(dir, acceleration);
     if (keys.s) velocity.addScaledVector(dir, -acceleration);
     player.position.add(velocity);
-    velocity.multiplyScalar(0.96);
+    velocity.multiplyScalar(0.991); // Adjust this value for drag (lower = stops faster, closer to 1 = slides more)
+
+    // Shield logic
+    if (shieldActive) {
+      shieldDuration -= 1/60;
+      shieldMesh.material.opacity = 0.3 + Math.sin(time * 0.01) * 0.1;
+      shieldMesh.rotation.y += 0.01;
+      if (shieldDuration <= 0) {
+        shieldActive = false;
+        shieldMesh.visible = false;
+        shieldBtn.classList.remove('active');
+      }
+    }
   } else {
     respawnTimer -= 1/60;
     respawnUI.innerText = `RESPAWNING IN ${Math.ceil(respawnTimer)}`;
@@ -216,7 +270,7 @@ function animate(time) {
   waveManager.update(player.position, enemies);
   if (!isDead) cannons.forEach(cannon => cannon.update(time, enemies, projectiles));
 
-  const isNearBase = base.update(player.position, enemies, projectiles, time, friendlyUnits);
+  const isNearBase = base.update(player.position, enemies, projectiles, time, friendlyUnits, playerHealth, maxPlayerHealth);
   
   if (isNearBase && !isDead) {
     upBtns.style.display = 'block';

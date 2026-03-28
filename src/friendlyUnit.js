@@ -20,11 +20,11 @@ export class FriendlyUnit {
     // Stats
     this.maxHealth = 10;
     this.health = this.maxHealth;
-    this.speed = 0.03;
+    this.speed = 0.015;
     this.isDead = false;
     this.aggroRange = 40;
     this.lastShotTime = 0;
-    this.shootInterval = 3000;
+    this.shootInterval = 6000;
 
     // Mini Health Bar UI
     this.healthBarGroup = new THREE.Group();
