@@ -2,15 +2,15 @@ import * as THREE from 'three';
 import { Unit } from './Unit';
 
 export class Probe extends Unit {
-  constructor(scene, spawnPosition) {
+  constructor(scene, spawnPosition, configOverrides = {}) {
     super(scene, spawnPosition, {
       displayName: 'Probe',
       type: 'probe',
-      maxHealth: 30,
-      speed: 0.015,
-      aggroRange: 40,
-      shootInterval: 6000,
-      damagePerShot: 1.5,
+      maxHealth: configOverrides.maxHealth ?? 30,
+      speed: configOverrides.speed ?? 0.015,
+      aggroRange: configOverrides.aggroRange ?? 40,
+      shootInterval: configOverrides.shootInterval ?? 6000,
+      damagePerShot: configOverrides.damagePerShot ?? 1.5,
       projectileColor: 0x0088ff,
       projectileIsEnemy: false,
       hitRadius: 1.2,

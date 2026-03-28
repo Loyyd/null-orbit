@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { Projectile } from './projectile';
 
 export class Cannon {
-  constructor(scene, parent, offset) {
+  constructor(scene, parent, offset, config = {}) {
     this.scene = scene;
     this.parent = parent; 
     this.offset = offset;
@@ -15,8 +15,11 @@ export class Cannon {
     this.parent.add(this.mesh);
 
     // Stats
-    this.range = 35;
-    this.fireRate = 1600 + Math.random() * 800; 
+    this.range = config.range ?? 35;
+    const fireRateMin = config.fireRateMin ?? 1600;
+    const fireRateMax = config.fireRateMax ?? 2400;
+    this.damage = config.damage ?? 2;
+    this.fireRate = fireRateMin + (Math.random() * Math.max(0, fireRateMax - fireRateMin));
     this.lastShotTime = 0;
   }
 
@@ -48,7 +51,7 @@ export class Cannon {
       dir.z += (Math.random() - 0.5) * scatter;
       dir.normalize();
 
-      projectiles.push(new Projectile(this.scene, worldPos, dir, 0x00ffff, false, 2, this.range * 2));
+      projectiles.push(new Projectile(this.scene, worldPos, dir, 0x00ffff, false, this.damage, this.range * 2));
       this.lastShotTime = currentTime;
     }
   }

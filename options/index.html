@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Meshy2 - Developer Options</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #061018;
+      --panel: rgba(10, 22, 34, 0.92);
+      --panel-2: rgba(16, 30, 44, 0.92);
+      --border: rgba(118, 215, 255, 0.2);
+      --accent: #6ce2ff;
+      --text: #ecf8ff;
+      --muted: #8faec1;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Segoe UI", sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at top, rgba(34, 92, 140, 0.34), transparent 34%),
+        linear-gradient(180deg, #07111a 0%, #03070b 100%);
+    }
+    .layout {
+      display: grid;
+      grid-template-columns: 320px minmax(0, 1fr);
+      min-height: 100vh;
+    }
+    .sidebar {
+      padding: 28px;
+      border-right: 1px solid var(--border);
+      background: rgba(5, 14, 22, 0.85);
+      position: sticky;
+      top: 0;
+      height: 100vh;
+    }
+    .sidebar h1 {
+      margin: 0 0 10px;
+      font-size: 1.6rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--accent);
+    }
+    .sidebar p {
+      margin: 0 0 20px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+    .status {
+      margin: 18px 0;
+      padding: 12px 14px;
+      border: 1px solid var(--border);
+      background: var(--panel);
+      color: var(--muted);
+      font-size: 0.9rem;
+      border-radius: 14px;
+    }
+    .actions {
+      display: grid;
+      gap: 10px;
+      margin-top: 20px;
+    }
+    .button {
+      width: 100%;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px 14px;
+      background: rgba(20, 52, 70, 0.8);
+      color: var(--text);
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      cursor: pointer;
+    }
+    .button.secondary { background: rgba(19, 29, 42, 0.92); }
+    .button:hover { border-color: rgba(108, 226, 255, 0.6); }
+    .content {
+      padding: 28px;
+      display: grid;
+      gap: 18px;
+      align-content: start;
+    }
+    .section {
+      border: 1px solid var(--border);
+      background: var(--panel-2);
+      border-radius: 18px;
+      padding: 18px;
+    }
+    .section h2 {
+      margin: 0 0 14px;
+      color: var(--accent);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      font-size: 0.95rem;
+    }
+    .field-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+      gap: 12px;
+    }
+    .field {
+      border: 1px solid rgba(118, 215, 255, 0.14);
+      background: rgba(7, 16, 25, 0.92);
+      border-radius: 14px;
+      padding: 12px;
+    }
+    .field label {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 0.78rem;
+      color: var(--muted);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .field input {
+      width: 100%;
+      border: 1px solid rgba(118, 215, 255, 0.18);
+      background: rgba(2, 8, 14, 0.95);
+      color: var(--text);
+      border-radius: 10px;
+      padding: 10px 12px;
+      font-size: 0.95rem;
+    }
+    .hint {
+      margin-top: 7px;
+      color: var(--muted);
+      font-size: 0.78rem;
+    }
+    .json-panel {
+      border: 1px solid var(--border);
+      background: rgba(2, 9, 14, 0.96);
+      border-radius: 14px;
+      padding: 14px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      white-space: pre-wrap;
+      line-height: 1.4;
+      color: #b8efff;
+    }
+    @media (max-width: 980px) {
+      .layout {
+        grid-template-columns: 1fr;
+      }
+      .sidebar {
+        position: static;
+        height: auto;
+        border-right: none;
+        border-bottom: 1px solid var(--border);
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <h1>Dev Options</h1>
+      <p>Control spawn behavior, unit stats, movement tuning, module cooldowns, and other core gameplay modifiers. Changes save straight to local storage and apply on refresh.</p>
+      <div id="status" class="status">Ready.</div>
+      <div class="actions">
+        <button id="save-btn" class="button">Save Options</button>
+        <button id="reset-btn" class="button secondary">Reset Defaults</button>
+        <button id="copy-btn" class="button secondary">Copy JSON</button>
+        <button id="open-game-btn" class="button secondary">Open Game</button>
+        <button id="open-map-btn" class="button secondary">Open Map Editor</button>
+      </div>
+    </aside>
+    <main class="content">
+      <div id="sections"></div>
+      <section class="section">
+        <h2>Live JSON</h2>
+        <div id="json-preview" class="json-panel"></div>
+      </section>
+    </main>
+  </div>
+  <script type="module" src="/src/optionsEditor.js"></script>
+</body>
+</html>

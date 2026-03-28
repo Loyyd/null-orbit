@@ -24,22 +24,25 @@ const TEAM_CONFIG = {
 };
 
 export class BaseStation {
-  constructor(scene, position, owner = 'player') {
+  constructor(scene, position, owner = 'player', gameOptions = {}) {
     this.scene = scene;
     this.position = position.clone();
     this.owner = owner;
-    this.fireRange = 40;
-    this.interactionRange = 18;
-    this.fireRate = 1200;
+    this.baseConfig = gameOptions.base || {};
+    this.probeConfig = gameOptions.probe || {};
+    this.fireRange = this.baseConfig.fireRange ?? 40;
+    this.interactionRange = this.baseConfig.interactionRange ?? 18;
+    this.fireRate = this.baseConfig.fireRate ?? 1200;
     this.lastShotTime = 0;
-    this.spawnInterval = 20000;
+    this.spawnInterval = this.baseConfig.spawnInterval ?? 20000;
     this.lastSpawnTime = 0;
-    this.maxHealth = 80;
+    this.maxHealth = this.baseConfig.maxHealth ?? 80;
     this.health = this.maxHealth;
     this.hitRadius = 6.5;
     this.captureCooldownUntil = 0;
     this.isDead = false;
     this.baseEmissiveIntensity = 1;
+    this.debugVisible = false;
 
     this.geometry = new THREE.CylinderGeometry(5, 7, 3, 32);
     this.material = new THREE.MeshStandardMaterial();
@@ -65,11 +68,13 @@ export class BaseStation {
     scene.add(this.fireRangeMesh);
     this.fireRangeMesh.position.copy(position);
     this.fireRangeMesh.position.y = -0.4;
+    this.fireRangeMesh.visible = false;
 
     this.interactionRangeMesh = createRadiusCircle(this.interactionRange, 0.15);
     scene.add(this.interactionRangeMesh);
     this.interactionRangeMesh.position.copy(position);
     this.interactionRangeMesh.position.y = -0.35;
+    this.interactionRangeMesh.visible = false;
 
     const towerGeo = new THREE.CylinderGeometry(2, 2, 8, 16);
     this.tower = new THREE.Mesh(towerGeo, this.material);
@@ -108,6 +113,12 @@ export class BaseStation {
 
     this.applyOwnerVisuals();
     this.updateHealthBar();
+  }
+
+  setDebugVisible(visible) {
+    this.debugVisible = visible;
+    this.fireRangeMesh.visible = visible;
+    this.interactionRangeMesh.visible = visible;
   }
 
   applyOwnerVisuals() {
@@ -260,8 +271,8 @@ export class BaseStation {
     }
 
     if (isPlayerOwned && currentTime - this.lastSpawnTime > this.spawnInterval) {
-      probes.push(new Probe(this.scene, this.position.clone().add(new THREE.Vector3(-2, 0, -8))));
-      probes.push(new Probe(this.scene, this.position.clone().add(new THREE.Vector3(2, 0, -8))));
+      probes.push(new Probe(this.scene, this.position.clone().add(new THREE.Vector3(-2, 0, -8)), this.probeConfig));
+      probes.push(new Probe(this.scene, this.position.clone().add(new THREE.Vector3(2, 0, -8)), this.probeConfig));
       this.lastSpawnTime = currentTime;
     }
 

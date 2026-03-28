@@ -7,9 +7,12 @@ import { Projectile } from './projectile';
 import { BaseStation } from './base';
 import { WaveManager } from './waveManager';
 import { Cannon } from './cannon';
+import { loadGameOptions } from './gameOptions';
 import { loadMap } from './mapData';
 import { createSpace } from './environment';
 import { movePlayerWithObstaclePhysics } from './obstacleNavigation';
+import { buildOccupancyMap, createGridAdapter } from './navigation/grid';
+import { FlowFieldUnitController } from './units/FlowFieldUnitController';
 
 // --- Setup ---
 const scene = new THREE.Scene();
@@ -26,6 +29,7 @@ createSpace(scene);
 
 // --- Map Data ---
 const mapData = loadMap();
+const gameOptions = loadGameOptions();
 
 // --- UI Setup ---
 const healthContainer = document.createElement('div');
@@ -59,16 +63,19 @@ baseUpgradeMenu.innerHTML = `
   <div id="base-upgrade-buttons">
     <button id="base-up-cannons" class="upgrade-btn">Add Base Cannons (+1)</button>
     <button id="base-up-spawn" class="upgrade-btn">Upgrade Spawn Rate</button>
-    <button id="base-up-shield" class="upgrade-btn">Buy Shield Module 🛡️</button>
+  </div>
+  <h2>Module Upgrades</h2>
+  <div id="module-upgrade-buttons">
+    <button id="base-up-shield" class="upgrade-btn">Buy Shield Module</button>
+    <button id="base-up-yamato" class="upgrade-btn">Buy Yamato Cannon</button>
   </div>
 `;
 document.body.appendChild(baseUpgradeMenu);
 
-const shieldBtn = document.createElement('button');
-shieldBtn.id = 'shield-btn';
-shieldBtn.innerHTML = '🛡️';
-shieldBtn.style.display = 'none';
-document.body.appendChild(shieldBtn);
+const moduleBar = document.createElement('div');
+moduleBar.id = 'module-bar';
+moduleBar.style.display = 'none';
+document.body.appendChild(moduleBar);
 
 const upBtns = document.getElementById('upgrade-buttons');
 const compCont = document.getElementById('compass-container');
@@ -131,18 +138,27 @@ directionalLight.position.set(50, 100, 70);
 scene.add(directionalLight);
 // --- Game State ---
 const clock = new THREE.Clock();
-let acceleration = 0.0005;
-let rotationSpeed = 0.015;
+let acceleration = gameOptions.player.acceleration;
+let rotationSpeed = gameOptions.player.rotationSpeed;
 let currentTier = 1;
-let playerHealth = 100;
-const maxPlayerHealth = 100;
+let playerHealth = gameOptions.player.maxHealth;
+const maxPlayerHealth = gameOptions.player.maxHealth;
 let isDead = false;
 let isPaused = false;
 let respawnTimer = 0;
 let hasShieldModule = false;
+let hasYamatoModule = false;
 let shieldActive = false;
 let shieldDuration = 0;
 let isDebugMode = false;
+let selectedModuleId = null;
+const purchasedModules = [];
+const yamatoEffects = [];
+const raycaster = new THREE.Raycaster();
+const pointer = new THREE.Vector2();
+const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+const SHIELD_COOLDOWN_MS = gameOptions.modules.shieldCooldownMs;
+const YAMATO_COOLDOWN_MS = gameOptions.modules.yamatoCooldownMs;
 
 function togglePause() {
   isPaused = !isPaused;
@@ -206,23 +222,177 @@ const shieldMesh = new THREE.Mesh(shieldGeo, shieldMat);
 shieldMesh.visible = false;
 player.add(shieldMesh);
 
+function getAbilityTargets() {
+  return [...enemies, ...(enemyBase.owner === 'enemy' ? [enemyBase] : [])];
+}
+
+function updateModuleBarVisibility() {
+  moduleBar.style.display = purchasedModules.length > 0 && !isDead ? 'flex' : 'none';
+}
+
+function getPurchasedModule(id) {
+  return purchasedModules.find((module) => module.id === id) || null;
+}
+
+function getModuleCooldownRemaining(module, now = performance.now()) {
+  return Math.max(0, module.cooldownMs - (now - module.lastUsedAt));
+}
+
+function refreshModuleButtons() {
+  const now = performance.now();
+
+  purchasedModules.forEach((module, index) => {
+    const coolingDown = getModuleCooldownRemaining(module, now) > 0;
+    module.slot.textContent = `${index + 1}`;
+    module.button.classList.toggle('active', module.id === 'shield' ? shieldActive : selectedModuleId === module.id);
+    module.button.classList.toggle('targeting', selectedModuleId === module.id);
+    module.button.classList.toggle('cooldown', coolingDown);
+    module.button.disabled = coolingDown;
+    module.button.title = coolingDown
+      ? `${Math.ceil(getModuleCooldownRemaining(module, now) / 1000)}s cooldown`
+      : module.label;
+  });
+}
+
+function clearSelectedModule() {
+  selectedModuleId = null;
+  renderer.domElement.style.cursor = '';
+  refreshModuleButtons();
+}
+
+function activateShieldModule() {
+  if (!hasShieldModule || shieldActive || isDead) return;
+  const shieldModule = getPurchasedModule('shield');
+  if (!shieldModule || getModuleCooldownRemaining(shieldModule) > 0) return;
+
+  shieldModule.lastUsedAt = performance.now();
+  shieldActive = true;
+  shieldDuration = gameOptions.modules.shieldDuration;
+  shieldMesh.visible = true;
+  refreshModuleButtons();
+}
+
+function spawnYamatoEffect(position, radius) {
+  const ring = new THREE.Mesh(
+    new THREE.RingGeometry(radius * 0.15, radius * 0.2, 48),
+    new THREE.MeshBasicMaterial({
+      color: 0x66d9ff,
+      transparent: true,
+      opacity: 0.85,
+      side: THREE.DoubleSide,
+    })
+  );
+  ring.rotation.x = Math.PI / 2;
+  ring.position.copy(position);
+  ring.position.y = 0.15;
+  scene.add(ring);
+
+  const flash = new THREE.Mesh(
+    new THREE.SphereGeometry(radius * 0.2, 24, 24),
+    new THREE.MeshBasicMaterial({
+      color: 0xb8f3ff,
+      transparent: true,
+      opacity: 0.45,
+    })
+  );
+  flash.position.copy(position);
+  flash.position.y = 0.75;
+  scene.add(flash);
+
+  yamatoEffects.push({
+    ring,
+    flash,
+    age: 0,
+    duration: 0.45,
+    radius,
+  });
+}
+
+function fireYamatoStrike(position) {
+  if (!hasYamatoModule || isDead) return;
+  const yamatoModule = getPurchasedModule('yamato');
+  if (!yamatoModule || getModuleCooldownRemaining(yamatoModule) > 0) return;
+
+  const radius = gameOptions.modules.yamatoRadius;
+  const damage = gameOptions.modules.yamatoDamage;
+  yamatoModule.lastUsedAt = performance.now();
+  spawnYamatoEffect(position, radius);
+
+  getAbilityTargets().forEach((target) => {
+    if (target.isDead) return;
+    const impactRadius = radius + (target.hitRadius || 0);
+    if (target.mesh.position.distanceTo(position) <= impactRadius) {
+      target.takeDamage(damage);
+    }
+  });
+
+  clearSelectedModule();
+}
+
+function activateYamatoModule() {
+  if (!hasYamatoModule || isDead) return;
+  const yamatoModule = getPurchasedModule('yamato');
+  if (!yamatoModule || getModuleCooldownRemaining(yamatoModule) > 0) return;
+
+  selectedModuleId = selectedModuleId === 'yamato' ? null : 'yamato';
+  renderer.domElement.style.cursor = selectedModuleId === 'yamato' ? 'crosshair' : '';
+  refreshModuleButtons();
+}
+
+function addPurchasedModule(id, icon, label, activate, cooldownMs) {
+  if (purchasedModules.some((module) => module.id === id)) {
+    return;
+  }
+
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'module-btn';
+  button.innerHTML = `
+    <span class="module-slot"></span>
+    <span class="module-icon">${icon}</span>
+    <span class="module-label">${label}</span>
+  `;
+
+  const slot = button.querySelector('.module-slot');
+  button.addEventListener('click', activate);
+  moduleBar.appendChild(button);
+  purchasedModules.push({ id, button, slot, label, activate, cooldownMs, lastUsedAt: -Infinity });
+  updateModuleBarVisibility();
+  refreshModuleButtons();
+}
+
 const cannons = [];
 function addCannons(count) {
   const pairs = Math.max(1, Math.floor(count / 2));
   for (let i = 0; i < pairs; i++) {
     const row = Math.floor(cannons.length / 2);
     const zPos = -0.5 + (row * 0.4);
-    cannons.push(new Cannon(scene, player, new THREE.Vector3(-0.6, 0, zPos)));
-    cannons.push(new Cannon(scene, player, new THREE.Vector3(0.6, 0, zPos)));
+    const cannonConfig = {
+      range: gameOptions.player.cannonRange,
+      fireRateMin: gameOptions.player.cannonFireRateMin,
+      fireRateMax: gameOptions.player.cannonFireRateMax,
+      damage: gameOptions.player.cannonDamage,
+    };
+    cannons.push(new Cannon(scene, player, new THREE.Vector3(-0.6, 0, zPos), cannonConfig));
+    cannons.push(new Cannon(scene, player, new THREE.Vector3(0.6, 0, zPos), cannonConfig));
   }
 }
 addCannons(2);
 
 const basePosition = new THREE.Vector3(mapData.basePosition.x, 0, mapData.basePosition.z);
-const base = new BaseStation(scene, basePosition);
+const base = new BaseStation(scene, basePosition, 'player', gameOptions);
 const enemyBasePosition = new THREE.Vector3(mapData.enemyBasePosition.x, 0, mapData.enemyBasePosition.z);
-const enemyBase = new BaseStation(scene, enemyBasePosition, 'enemy');
-const waveManager = new WaveManager(scene);
+const enemyBase = new BaseStation(scene, enemyBasePosition, 'enemy', gameOptions);
+base.setDebugVisible(false);
+enemyBase.setDebugVisible(false);
+const waveManager = new WaveManager(scene, gameOptions);
+const navigationGrid = createGridAdapter({
+  width: 40,
+  height: 140,
+  cellSize: 2,
+  minX: -40,
+  minZ: -140,
+});
 
 // --- Obstacles ---
 const obstacleColliders = [];
@@ -235,6 +405,15 @@ mapData.obstacles.forEach(o => {
   obstacle.position.set(o.x, 0, o.z);
   scene.add(obstacle);
   obstacleColliders.push({ x: o.x, z: o.z, w, h });
+});
+const occupancyMap = buildOccupancyMap(obstacleColliders, navigationGrid, gameOptions.flowField.occupancyPadding);
+const enemyController = new FlowFieldUnitController(scene, occupancyMap, navigationGrid, {
+  maxUnits: gameOptions.enemy.maxUnits,
+  separationRadius: gameOptions.enemy.separationRadius,
+  separationStrength: gameOptions.enemy.separationStrength,
+  obstacleAvoidanceStrength: gameOptions.enemy.obstacleAvoidanceStrength,
+  boundsLimit: gameOptions.enemy.boundsLimit,
+  enemyConfig: gameOptions.enemy,
 });
 
 // --- Bombs ---
@@ -271,22 +450,21 @@ document.getElementById('up-tier2').onclick = () => {
 };
 
 document.getElementById('base-up-shield').onclick = () => {
+  if (hasShieldModule) return;
   hasShieldModule = true;
-  shieldBtn.style.display = 'flex';
-  document.getElementById('base-up-shield').style.display = 'none'; // Only buy once
+  addPurchasedModule('shield', 'S', 'Shield', activateShieldModule, SHIELD_COOLDOWN_MS);
+  document.getElementById('base-up-shield').style.display = 'none';
 };
 
-shieldBtn.onclick = () => {
-  if (hasShieldModule && !shieldActive && !isDead) {
-    shieldActive = true;
-    shieldDuration = 6; // 6 seconds
-    shieldMesh.visible = true;
-    shieldBtn.classList.add('active');
-  }
+document.getElementById('base-up-yamato').onclick = () => {
+  if (hasYamatoModule) return;
+  hasYamatoModule = true;
+  addPurchasedModule('yamato', 'Y', 'Yamato', activateYamatoModule, YAMATO_COOLDOWN_MS);
+  document.getElementById('base-up-yamato').style.display = 'none';
 };
 
 // --- Loop Variables ---
-const enemies = [];
+const enemies = enemyController.targets;
 const projectiles = [];
 const probes = [];
 let velocity = new THREE.Vector3();
@@ -301,16 +479,37 @@ document.getElementById('base-up-spawn').onclick = () => activeFriendlyBase.upgr
 window.addEventListener('keydown', (e) => { 
   if (keys.hasOwnProperty(e.key.toLowerCase())) keys[e.key.toLowerCase()] = true; 
   if (e.key === 'Escape') togglePause();
+  if (e.key >= '1' && e.key <= '9') {
+    const module = purchasedModules[Number(e.key) - 1];
+    if (module) {
+      module.activate();
+    }
+  }
   if (e.key === 'F2') {
     isDebugMode = !isDebugMode;
     debugInfo.style.display = isDebugMode ? 'block' : 'none';
     playerRangeMesh.visible = isDebugMode;
+    base.setDebugVisible(isDebugMode);
+    enemyBase.setDebugVisible(isDebugMode);
   }
 });
 window.addEventListener('keyup', (e) => { if (keys.hasOwnProperty(e.key.toLowerCase())) keys[e.key.toLowerCase()] = false; });
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight); composer.setSize(window.innerWidth, window.innerHeight);
+});
+renderer.domElement.addEventListener('pointerdown', (event) => {
+  if (selectedModuleId !== 'yamato' || isPaused || isDead) return;
+
+  const rect = renderer.domElement.getBoundingClientRect();
+  pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+  pointer.y = -(((event.clientY - rect.top) / rect.height) * 2 - 1);
+  raycaster.setFromCamera(pointer, camera);
+
+  const targetPoint = new THREE.Vector3();
+  if (!raycaster.ray.intersectPlane(groundPlane, targetPoint)) return;
+  targetPoint.y = 0;
+  fireYamatoStrike(targetPoint);
 });
 
 function onPlayerHit(damage) {
@@ -327,7 +526,8 @@ function triggerDeath() {
   player.visible = false;
   shieldActive = false;
   shieldMesh.visible = false;
-  shieldBtn.classList.remove('active');
+  clearSelectedModule();
+  updateModuleBarVisibility();
   respawnTimer = 10;
   respawnUI.style.display = 'block';
   velocity.set(0, 0, 0);
@@ -339,6 +539,8 @@ function respawn() {
   player.visible = true;
   player.position.copy(basePosition);
   respawnUI.style.display = 'none';
+  updateModuleBarVisibility();
+  refreshModuleButtons();
 }
 
 function animate() {
@@ -351,6 +553,7 @@ function animate() {
   
   const deltaTime = clock.getDelta();
   const time = clock.elapsedTime * 1000;
+  refreshModuleButtons();
 
   if (isDebugMode) {
     playerRangeMesh.position.copy(player.position);
@@ -401,7 +604,7 @@ WAVE: ${waveManager.waveLevel}`;
       if (shieldDuration <= 0) {
         shieldActive = false;
         shieldMesh.visible = false;
-        shieldBtn.classList.remove('active');
+        refreshModuleButtons();
       }
     }
   } else {
@@ -416,7 +619,7 @@ WAVE: ${waveManager.waveLevel}`;
     takeDamage: (amt) => onPlayerHit(amt)
   };
 
-  waveManager.update(player.position, enemies, deltaTime);
+  waveManager.update(player.position, enemyController, deltaTime);
   const allBases = [base, enemyBase];
   const playerOwnedBases = allBases.filter((station) => station.owner === 'player');
   const enemyOwnedBases = allBases.filter((station) => station.owner === 'enemy');
@@ -448,11 +651,15 @@ WAVE: ${waveManager.waveLevel}`;
     }
   });
   
-  if (isNearBase && !isDead) {
+  const canUseUpgradeMenus = !isDead && (isNearBase || isDebugMode);
+
+  if (canUseUpgradeMenus) {
     upBtns.style.display = 'block';
     baseUpgradeMenu.style.display = 'flex';
     compCont.style.display = 'none';
-    playerHealth = Math.min(maxPlayerHealth, playerHealth + 3 * deltaTime); 
+    if (isNearBase) {
+      playerHealth = Math.min(maxPlayerHealth, playerHealth + (gameOptions.base.healingRate * deltaTime));
+    }
   } else {
     upBtns.style.display = 'none';
     baseUpgradeMenu.style.display = 'none';
@@ -471,9 +678,36 @@ WAVE: ${waveManager.waveLevel}`;
   const distPushed = Math.max(0, Math.floor(Math.abs(player.position.z - mapData.basePosition.z)));
   document.getElementById('stats').innerText = `Dist: ${distPushed}m | Zone: ${waveManager.waveLevel}`;
 
-  for (let i = enemies.length - 1; i >= 0; i--) { 
-    enemies[i].update(playerTarget, projectiles, camera, probes, playerOwnedBases, deltaTime, obstacleColliders); 
-    if (enemies[i].isDead) enemies.splice(i, 1); 
+  enemyController.update(
+    deltaTime,
+    isDead ? activeFriendlyBase.mesh.position : player.position,
+    enemyTargets,
+    projectiles
+  );
+
+  for (let i = yamatoEffects.length - 1; i >= 0; i--) {
+    const effect = yamatoEffects[i];
+    effect.age += deltaTime;
+    const t = effect.age / effect.duration;
+
+    if (t >= 1) {
+      scene.remove(effect.ring);
+      scene.remove(effect.flash);
+      effect.ring.geometry.dispose();
+      effect.ring.material.dispose();
+      effect.flash.geometry.dispose();
+      effect.flash.material.dispose();
+      yamatoEffects.splice(i, 1);
+      continue;
+    }
+
+    const ringScale = 0.25 + (t * 1.6);
+    effect.ring.scale.setScalar(ringScale);
+    effect.ring.material.opacity = 0.85 * (1 - t);
+
+    const flashScale = 1 + (t * 2.4);
+    effect.flash.scale.setScalar(flashScale);
+    effect.flash.material.opacity = 0.45 * (1 - t);
   }
 
   for (let i = projectiles.length - 1; i >= 0; i--) { 

@@ -1,51 +1,57 @@
 import * as THREE from 'three';
-import { createEnemyUnit } from './units/enemyFactory';
 
 export class WaveManager {
-  constructor(scene) {
+  constructor(scene, gameOptions = {}) {
     this.scene = scene;
+    this.waveOptions = gameOptions.wave || {};
     this.spawnTimer = 0;
     this.waveLevel = 1;
   }
 
-  update(playerPos, enemies, deltaTime) {
+  update(playerPos, enemyController, deltaTime) {
+    const zoneDistance = this.waveOptions.zoneDistance ?? 80;
     const distancePush = Math.abs(playerPos.z - 20);
-    this.waveLevel = 1 + Math.floor(distancePush / 80);
+    this.waveLevel = 1 + Math.floor(distancePush / zoneDistance);
 
     this.spawnTimer += deltaTime;
-    // Threshold in seconds: 8s to 16s
-    const spawnThreshold = Math.max(8, 16 - (this.waveLevel * 0.75)); 
+    const spawnThreshold = Math.max(
+      this.waveOptions.spawnThresholdMin ?? 8,
+      (this.waveOptions.spawnThresholdBase ?? 16) - (this.waveLevel * (this.waveOptions.spawnThresholdDropPerWave ?? 0.75))
+    );
 
     if (this.spawnTimer > spawnThreshold) {
-      this.spawnSquad(playerPos, enemies);
+      this.spawnSquad(playerPos, enemyController);
       this.spawnTimer = 0;
     }
   }
 
-  spawnSquad(playerPos, enemies) {
-    const squadSize = Math.min(6, 2 + Math.floor(this.waveLevel / 2));
+  spawnSquad(playerPos, enemyController) {
+    const squadSize = Math.min(
+      this.waveOptions.squadSizeMax ?? 6,
+      (this.waveOptions.squadSizeBase ?? 2) + Math.floor(this.waveLevel / (this.waveOptions.squadSizeGrowthDivisor ?? 2))
+    );
     const squadCenter = new THREE.Vector3(
-      (Math.random() - 0.5) * 80,
+      (Math.random() - 0.5) * (this.waveOptions.squadWidth ?? 80),
       0,
-      playerPos.z - 80
+      playerPos.z - (this.waveOptions.spawnDistanceBehindPlayer ?? 80)
     );
 
-    const spawnPulsar = Math.random() < (0.1 + (this.waveLevel * 0.05));
+    const spawnPulsar = Math.random() < (
+      (this.waveOptions.pulsarChanceBase ?? 0.1) +
+      (this.waveLevel * (this.waveOptions.pulsarChancePerWave ?? 0.05))
+    );
 
     for (let i = 0; i < squadSize; i++) {
       const isPulsar = spawnPulsar && i === 0;
       
       const offset = new THREE.Vector3(
-        (Math.random() - 0.5) * 15,
+        (Math.random() - 0.5) * (this.waveOptions.squadSpread ?? 15),
         0,
-        (Math.random() - 0.5) * 15
+        (Math.random() - 0.5) * (this.waveOptions.squadSpread ?? 15)
       );
       
       const type = isPulsar ? 'pulsar' : 'spark';
-      const enemy = createEnemyUnit(this.scene, squadCenter.clone().add(offset), type);
-      enemy.configureForWave(this.waveLevel);
-
-      enemies.push(enemy);
+      enemyController.spawn(squadCenter.clone().add(offset), type, this.waveLevel);
     }
   }
 }
