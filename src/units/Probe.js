@@ -36,7 +36,7 @@ export class Probe extends Unit {
     this.initializeHealthBar(1.2, 0.15, 0x0088ff, 1.2);
   }
 
-  update(targets, projectiles, camera, deltaTime = 1 / 60) {
+  update(targets, projectiles, camera, deltaTime = 1 / 60, obstacles = []) {
     if (this.isDead) return;
 
     this.updateHealthBarFacing(camera);
@@ -56,9 +56,15 @@ export class Probe extends Unit {
     if (nearestTarget) {
       const dir = new THREE.Vector3().subVectors(nearestTarget.mesh.position, this.mesh.position).normalize();
       if (minDist > 10) {
-        this.mesh.position.addScaledVector(dir, this.speed * deltaTime * 60);
+        const moveDelta = this.moveWithObstacles(dir, deltaTime, obstacles, nearestTarget.mesh.position);
+        if (moveDelta.lengthSq() > 0.000001) {
+          this.mesh.lookAt(this.mesh.position.clone().add(moveDelta));
+        } else {
+          this.mesh.lookAt(nearestTarget.mesh.position);
+        }
+      } else {
+        this.mesh.lookAt(nearestTarget.mesh.position);
       }
-      this.mesh.lookAt(nearestTarget.mesh.position);
 
       const currentTime = performance.now();
       if (currentTime - this.lastShotTime > this.shootInterval) {
@@ -68,8 +74,12 @@ export class Probe extends Unit {
         this.lastShotTime = currentTime;
       }
     } else {
-      this.mesh.position.z -= this.speed * deltaTime * 60;
-      this.mesh.rotation.y = 0;
+      const moveDelta = this.moveWithObstacles(new THREE.Vector3(0, 0, -1), deltaTime, obstacles);
+      if (moveDelta.lengthSq() > 0.000001) {
+        this.mesh.lookAt(this.mesh.position.clone().add(moveDelta));
+      } else {
+        this.mesh.rotation.y = 0;
+      }
     }
 
     if (Math.abs(this.mesh.position.z) > this.boundsLimit) {

@@ -1,6 +1,5 @@
 import * as THREE from 'three';
 import { Unit } from './Unit';
-
 export class EnemyUnit extends Unit {
   constructor(scene, spawnPosition, config) {
     super(scene, spawnPosition, {
@@ -43,7 +42,7 @@ export class EnemyUnit extends Unit {
 
   configureForWave() {}
 
-  update(playerTarget, projectiles, camera, probes = [], baseTargets = [], deltaTime = 1 / 60) {
+  update(playerTarget, projectiles, camera, probes = [], baseTargets = [], deltaTime = 1 / 60, obstacles = []) {
     if (this.isDead) return;
 
     this.updateHealthBarFacing(camera);
@@ -76,23 +75,36 @@ export class EnemyUnit extends Unit {
 
     if (target && minDist < this.aggroRange) {
       const targetPos = target.position;
-      const dir = new THREE.Vector3().subVectors(targetPos, this.mesh.position).normalize();
-      this.mesh.position.addScaledVector(dir, this.speed * deltaTime * 60);
-      this.mesh.lookAt(targetPos);
+      const desiredDir = new THREE.Vector3().subVectors(targetPos, this.mesh.position).normalize();
+      const moveDelta = this.moveWithObstacles(desiredDir, deltaTime, obstacles, targetPos);
+      if (moveDelta.lengthSq() > 0.000001) {
+        this.mesh.lookAt(this.mesh.position.clone().add(moveDelta));
+      } else {
+        this.mesh.lookAt(targetPos);
+      }
 
       const currentTime = performance.now();
       if (currentTime - this.lastShotTime > this.shootInterval) {
         this.cannons.forEach((cannon) => {
           const worldPos = new THREE.Vector3();
           cannon.getWorldPosition(worldPos);
-          this.fireProjectile(projectiles, worldPos, dir);
+          const shotDir = new THREE.Vector3().subVectors(targetPos, worldPos).normalize();
+          this.fireProjectile(projectiles, worldPos, shotDir);
         });
         this.lastShotTime = currentTime;
       }
     } else {
-      this.mesh.position.z += this.speed * this.idleSpeedMultiplier * deltaTime * 60;
-      this.mesh.position.x += Math.sin(Date.now() * 0.001) * this.idleDriftAmplitude * deltaTime * 60;
-      this.mesh.rotation.y = this.defaultLookRotationY;
+      const idleDir = new THREE.Vector3(
+        Math.sin(Date.now() * 0.001) * this.idleDriftAmplitude * 20,
+        0,
+        this.idleSpeedMultiplier
+      ).normalize();
+      const moveDelta = this.moveWithObstacles(idleDir, deltaTime, obstacles);
+      if (moveDelta.lengthSq() > 0.000001) {
+        this.mesh.lookAt(this.mesh.position.clone().add(moveDelta));
+      } else {
+        this.mesh.rotation.y = this.defaultLookRotationY;
+      }
     }
 
     if (Math.abs(this.mesh.position.z - (playerTarget.mesh ? playerTarget.mesh.position.z : 0)) > this.boundsLimit) {

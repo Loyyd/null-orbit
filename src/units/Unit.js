@@ -1,5 +1,12 @@
 import * as THREE from 'three';
 import { Projectile } from '../projectile';
+import {
+  createBypassWaypoint,
+  findBlockingObstacle,
+  getNavigableDirection,
+  moveWithObstacleCollisions,
+  resolveObstacleCollisions,
+} from '../obstacleNavigation';
 
 function disposeMaterial(material) {
   if (Array.isArray(material)) {
@@ -30,6 +37,7 @@ export class Unit {
     this.mesh.position.copy(spawnPosition);
     this.isDead = false;
     this.lastShotTime = 0;
+    this.navigationWaypoint = null;
     this.healthBarGroup = null;
     this.hpFg = null;
     this.healthBarWidth = 0;
@@ -117,6 +125,56 @@ export class Unit {
         this.aggroRange * 2
       )
     );
+  }
+
+  moveWithObstacles(direction, deltaTime, obstacles, targetPosition = null) {
+    resolveObstacleCollisions(this.mesh.position, this.hitRadius, obstacles);
+
+    const travelDistance = this.speed * deltaTime * 60;
+    let desiredDirection = direction.clone().normalize();
+
+    if (this.navigationWaypoint) {
+      const toWaypoint = new THREE.Vector3().subVectors(this.navigationWaypoint, this.mesh.position);
+      if (toWaypoint.lengthSq() < 2.25) {
+        this.navigationWaypoint = null;
+      } else {
+        desiredDirection = toWaypoint.normalize();
+      }
+    }
+
+    if (!this.navigationWaypoint) {
+      const blockingObstacle = findBlockingObstacle(
+        this.mesh.position,
+        desiredDirection,
+        obstacles,
+        this.hitRadius,
+        Math.max(8, travelDistance * 6)
+      );
+
+      if (blockingObstacle) {
+        this.navigationWaypoint = createBypassWaypoint(
+          this.mesh.position,
+          targetPosition,
+          blockingObstacle,
+          this.hitRadius
+        );
+        desiredDirection = new THREE.Vector3()
+          .subVectors(this.navigationWaypoint, this.mesh.position)
+          .normalize();
+      }
+    }
+
+    const navigableDirection = getNavigableDirection(
+      this.mesh.position,
+      desiredDirection,
+      obstacles,
+      this.hitRadius,
+      Math.max(2, travelDistance * 3)
+    );
+    const delta = navigableDirection.multiplyScalar(travelDistance);
+    const nextPosition = moveWithObstacleCollisions(this.mesh.position, delta, this.hitRadius, obstacles);
+    this.mesh.position.copy(nextPosition);
+    return delta;
   }
 
   die() {

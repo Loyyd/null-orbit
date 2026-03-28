@@ -9,6 +9,7 @@ import { WaveManager } from './waveManager';
 import { Cannon } from './cannon';
 import { loadMap } from './mapData';
 import { createSpace } from './environment';
+import { movePlayerWithObstaclePhysics } from './obstacleNavigation';
 
 // --- Setup ---
 const scene = new THREE.Scene();
@@ -224,6 +225,7 @@ const enemyBase = new BaseStation(scene, enemyBasePosition, 'enemy');
 const waveManager = new WaveManager(scene);
 
 // --- Obstacles ---
+const obstacleColliders = [];
 const obsMat = new THREE.MeshStandardMaterial({ color: 0x8a8a8a, metalness: 0.7, roughness: 0.35 });
 mapData.obstacles.forEach(o => {
   const w = o.w || 2;
@@ -232,6 +234,7 @@ mapData.obstacles.forEach(o => {
   const obstacle = new THREE.Mesh(obsGeo, obsMat);
   obstacle.position.set(o.x, 0, o.z);
   scene.add(obstacle);
+  obstacleColliders.push({ x: o.x, z: o.z, w, h });
 });
 
 // --- Bombs ---
@@ -372,7 +375,14 @@ WAVE: ${waveManager.waveLevel}`;
     const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion);
     if (keys.w) velocity.addScaledVector(dir, acceleration * deltaTime * 60);
     if (keys.s) velocity.addScaledVector(dir, -acceleration * deltaTime * 60);
-    player.position.add(velocity);
+    const playerMovement = movePlayerWithObstaclePhysics(player.position, velocity, 1.1, obstacleColliders, {
+      bounceDamping: 0.2,
+      wallFriction: 0.84,
+      pushbackDistance: 0.22,
+      stepCount: 5,
+    });
+    player.position.copy(playerMovement.position);
+    velocity.copy(playerMovement.velocity);
     velocity.multiplyScalar(Math.pow(0.991, deltaTime * 60)); // Resolution-independent drag
 
     // Bomb collision
@@ -452,7 +462,7 @@ WAVE: ${waveManager.waveLevel}`;
   }
 
   for (let i = probes.length - 1; i >= 0; i--) {
-    probes[i].update(enemies, projectiles, camera, deltaTime);
+    probes[i].update(enemies, projectiles, camera, deltaTime, obstacleColliders);
     if (probes[i].isDead) probes.splice(i, 1);
   }
 
@@ -462,7 +472,7 @@ WAVE: ${waveManager.waveLevel}`;
   document.getElementById('stats').innerText = `Dist: ${distPushed}m | Zone: ${waveManager.waveLevel}`;
 
   for (let i = enemies.length - 1; i >= 0; i--) { 
-    enemies[i].update(playerTarget, projectiles, camera, probes, playerOwnedBases, deltaTime); 
+    enemies[i].update(playerTarget, projectiles, camera, probes, playerOwnedBases, deltaTime, obstacleColliders); 
     if (enemies[i].isDead) enemies.splice(i, 1); 
   }
 
