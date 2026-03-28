@@ -48,7 +48,7 @@ export class Cannon {
       dir.z += (Math.random() - 0.5) * scatter;
       dir.normalize();
 
-      projectiles.push(new Projectile(this.scene, worldPos, dir, 0x00ffff, false, 2));
+      projectiles.push(new Projectile(this.scene, worldPos, dir, 0x00ffff, false, 2, this.range * 2));
       this.lastShotTime = currentTime;
     }
   }

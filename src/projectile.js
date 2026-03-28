@@ -1,10 +1,12 @@
 import * as THREE from 'three';
 
 export class Projectile {
-  constructor(scene, spawnPosition, direction, color = 0xff0000, isEnemy = false, damage = 1) {
+  constructor(scene, spawnPosition, direction, color = 0xff0000, isEnemy = false, damage = 1, maxTravelDistance = 400) {
     this.scene = scene;
     this.isEnemy = isEnemy;
     this.damage = damage;
+    this.maxTravelDistance = maxTravelDistance;
+    this.distanceTraveled = 0;
     
     this.geometry = new THREE.CapsuleGeometry(0.1, 0.8, 4, 8);
     this.material = new THREE.MeshBasicMaterial({ color: color });
@@ -20,9 +22,11 @@ export class Projectile {
     scene.add(this.mesh);
   }
 
-  update(targets, onHit) {
+  update(targets, onHit, deltaTime = 1/60) {
     if (this.isRemoved) return;
-    this.mesh.position.addScaledVector(this.direction, this.speed);
+    const stepDistance = this.speed * deltaTime * 60;
+    this.mesh.position.addScaledVector(this.direction, stepDistance);
+    this.distanceTraveled += stepDistance;
 
     if (Array.isArray(targets)) {
       for (const target of targets) {
@@ -38,7 +42,7 @@ export class Projectile {
       this.remove();
     }
 
-    if (this.mesh.position.length() > 400) this.remove();
+    if (this.distanceTraveled >= this.maxTravelDistance) this.remove();
   }
 
   remove() {

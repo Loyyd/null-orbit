@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { Projectile } from './projectile';
-import { FriendlyUnit } from './friendlyUnit';
+import { Probe } from './units/Probe';
 
 const TEAM_CONFIG = {
   player: {
@@ -194,7 +194,7 @@ export class BaseStation {
     this.updateHealthBar();
   }
 
-  update(playerPos, enemies, projectiles, currentTime, friendlyUnits, playerHealth, maxPlayerHealth, targets = [], camera = null) {
+  update(playerPos, enemies, projectiles, currentTime, probes, playerHealth, maxPlayerHealth, targets = [], camera = null) {
     this.mesh.rotation.y += 0.001;
 
     if (camera) {
@@ -254,14 +254,14 @@ export class BaseStation {
 
         const dir = new THREE.Vector3().subVectors(nearestTarget.mesh.position, worldPos).normalize();
         cannon.lookAt(nearestTarget.mesh.position);
-        projectiles.push(new Projectile(this.scene, worldPos, dir, config.projectileColor, !isPlayerOwned, 2));
+        projectiles.push(new Projectile(this.scene, worldPos, dir, config.projectileColor, !isPlayerOwned, 2, this.fireRange * 2));
         cannon.userData.lastShotTime = currentTime;
       });
     }
 
     if (isPlayerOwned && currentTime - this.lastSpawnTime > this.spawnInterval) {
-      friendlyUnits.push(new FriendlyUnit(this.scene, this.position.clone().add(new THREE.Vector3(-2, 0, -8))));
-      friendlyUnits.push(new FriendlyUnit(this.scene, this.position.clone().add(new THREE.Vector3(2, 0, -8))));
+      probes.push(new Probe(this.scene, this.position.clone().add(new THREE.Vector3(-2, 0, -8))));
+      probes.push(new Probe(this.scene, this.position.clone().add(new THREE.Vector3(2, 0, -8))));
       this.lastSpawnTime = currentTime;
     }
 

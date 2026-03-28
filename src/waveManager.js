@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { Enemy } from './enemy';
+import { createEnemyUnit } from './units/enemyFactory';
 
 export class WaveManager {
   constructor(scene) {
@@ -30,11 +30,10 @@ export class WaveManager {
       playerPos.z - 80
     );
 
-    // AI decides whether to include a Tank in this squad
-    const spawnTank = Math.random() < (0.1 + (this.waveLevel * 0.05));
+    const spawnPulsar = Math.random() < (0.1 + (this.waveLevel * 0.05));
 
     for (let i = 0; i < squadSize; i++) {
-      const isTank = spawnTank && i === 0; // Only one tank per squad if triggered
+      const isPulsar = spawnPulsar && i === 0;
       
       const offset = new THREE.Vector3(
         (Math.random() - 0.5) * 15,
@@ -42,19 +41,11 @@ export class WaveManager {
         (Math.random() - 0.5) * 15
       );
       
-      const type = isTank ? 'tank' : 'scout';
-      const enemy = new Enemy(this.scene, squadCenter.clone().add(offset), type);
-      
-      // Fine-tune zone-based scaling
-      if (!isTank) {
-        enemy.speed = 0.04 + (this.waveLevel * 0.0025);
-        enemy.health = 3 + Math.floor(this.waveLevel / 3);
-      } else {
-        enemy.health = 15 + (this.waveLevel * 2);
-      }
+      const type = isPulsar ? 'pulsar' : 'spark';
+      const enemy = createEnemyUnit(this.scene, squadCenter.clone().add(offset), type);
+      enemy.configureForWave(this.waveLevel);
 
       enemies.push(enemy);
     }
   }
 }
-

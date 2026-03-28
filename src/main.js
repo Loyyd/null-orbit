@@ -130,8 +130,8 @@ directionalLight.position.set(50, 100, 70);
 scene.add(directionalLight);
 // --- Game State ---
 const clock = new THREE.Clock();
-let acceleration = 0.0008;
-let rotationSpeed = 0.01;
+let acceleration = 0.0005;
+let rotationSpeed = 0.015;
 let currentTier = 1;
 let playerHealth = 100;
 const maxPlayerHealth = 100;
@@ -141,6 +141,7 @@ let respawnTimer = 0;
 let hasShieldModule = false;
 let shieldActive = false;
 let shieldDuration = 0;
+let isDebugMode = false;
 
 function togglePause() {
   isPaused = !isPaused;
@@ -164,8 +165,6 @@ backBtn.onclick = () => {
 
 document.getElementById('bloom-range').oninput = (e) => bloomPass.strength = parseFloat(e.target.value);
 document.getElementById('ambient-range').oninput = (e) => ambientLight.intensity = parseFloat(e.target.value);
-
-// --- Objects ---
 
 // --- Debug UI ---
 const debugInfo = document.createElement('div');
@@ -225,7 +224,7 @@ const enemyBase = new BaseStation(scene, enemyBasePosition, 'enemy');
 const waveManager = new WaveManager(scene);
 
 // --- Obstacles ---
-const obsMat = new THREE.MeshStandardMaterial({ color: 0x555555, metalness: 0.9, roughness: 0.1 }); // More asteroid-like
+const obsMat = new THREE.MeshStandardMaterial({ color: 0x8a8a8a, metalness: 0.7, roughness: 0.35 });
 mapData.obstacles.forEach(o => {
   const w = o.w || 2;
   const h = o.h || 2;
@@ -286,7 +285,7 @@ shieldBtn.onclick = () => {
 // --- Loop Variables ---
 const enemies = [];
 const projectiles = [];
-const friendlyUnits = [];
+const probes = [];
 let velocity = new THREE.Vector3();
 const keys = { w: false, a: false, s: false, d: false };
 const targetCameraPos = new THREE.Vector3();
@@ -298,6 +297,7 @@ document.getElementById('base-up-spawn').onclick = () => activeFriendlyBase.upgr
 // --- Event Listeners ---
 window.addEventListener('keydown', (e) => { 
   if (keys.hasOwnProperty(e.key.toLowerCase())) keys[e.key.toLowerCase()] = true; 
+  if (e.key === 'Escape') togglePause();
   if (e.key === 'F2') {
     isDebugMode = !isDebugMode;
     debugInfo.style.display = isDebugMode ? 'block' : 'none';
@@ -340,17 +340,48 @@ function respawn() {
 
 function animate() {
   requestAnimationFrame(animate);
+
+  if (isPaused) {
+    composer.render();
+    return;
+  }
+  
   const deltaTime = clock.getDelta();
   const time = clock.elapsedTime * 1000;
-  
+
+  if (isDebugMode) {
+    playerRangeMesh.position.copy(player.position);
+    playerRangeMesh.position.y = -0.4;
+    const fps = Math.round(1 / (deltaTime || 0.01));
+    debugInfo.innerText = 
+`[DEBUG MODE]
+FPS: ${fps}
+POS: X:${player.position.x.toFixed(2)} Y:${player.position.y.toFixed(2)} Z:${player.position.z.toFixed(2)}
+VEL: ${velocity.length().toFixed(4)}
+HP: ${playerHealth.toFixed(1)} / ${maxPlayerHealth}
+ENEMIES: ${enemies.length}
+PROJECTILES: ${projectiles.length}
+PROBES: ${probes.length}
+WAVE: ${waveManager.waveLevel}`;
+  }
+
   if (!isDead) {
-    if (keys.a) player.rotation.y += rotationSpeed;
-    if (keys.d) player.rotation.y -= rotationSpeed;
+
+    if (keys.a) player.rotation.y += rotationSpeed * deltaTime * 60;
+    if (keys.d) player.rotation.y -= rotationSpeed * deltaTime * 60;
     const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion);
-    if (keys.w) velocity.addScaledVector(dir, acceleration);
-    if (keys.s) velocity.addScaledVector(dir, -acceleration);
+    if (keys.w) velocity.addScaledVector(dir, acceleration * deltaTime * 60);
+    if (keys.s) velocity.addScaledVector(dir, -acceleration * deltaTime * 60);
     player.position.add(velocity);
-    velocity.multiplyScalar(0.991); // Adjust this value for drag (lower = stops faster, closer to 1 = slides more)
+    velocity.multiplyScalar(Math.pow(0.991, deltaTime * 60)); // Resolution-independent drag
+
+    // Bomb collision
+    bombs.forEach(bomb => {
+      const dist = player.position.distanceTo(bomb.position);
+      if (dist < 1.5 && !isDead) { // Collision radius
+        triggerDeath();
+      }
+    });
 
     // Shield logic
     if (shieldActive) {
@@ -380,7 +411,7 @@ function animate() {
   const playerOwnedBases = allBases.filter((station) => station.owner === 'player');
   const enemyOwnedBases = allBases.filter((station) => station.owner === 'enemy');
   const playerTargets = [...enemies, ...enemyOwnedBases];
-  const enemyTargets = [playerTarget, ...friendlyUnits, ...playerOwnedBases];
+  const enemyTargets = [playerTarget, ...probes, ...playerOwnedBases];
 
   if (!isDead) cannons.forEach(cannon => cannon.update(time, playerTargets, projectiles));
 
@@ -396,7 +427,7 @@ function animate() {
       enemies,
       projectiles,
       time,
-      friendlyUnits,
+      probes,
       playerHealth,
       maxPlayerHealth,
       station.owner === 'player' ? playerTargets : enemyTargets,
@@ -420,9 +451,9 @@ function animate() {
     baseArrow.style.transform = `rotate(${screenAngle}rad)`;
   }
 
-  for (let i = friendlyUnits.length - 1; i >= 0; i--) {
-    friendlyUnits[i].update(playerTargets, projectiles, camera);
-    if (friendlyUnits[i].isDead) friendlyUnits.splice(i, 1);
+  for (let i = probes.length - 1; i >= 0; i--) {
+    probes[i].update(enemies, projectiles, camera, deltaTime);
+    if (probes[i].isDead) probes.splice(i, 1);
   }
 
   const healthPercent = (playerHealth / maxPlayerHealth) * 100;
@@ -431,16 +462,16 @@ function animate() {
   document.getElementById('stats').innerText = `Dist: ${distPushed}m | Zone: ${waveManager.waveLevel}`;
 
   for (let i = enemies.length - 1; i >= 0; i--) { 
-    enemies[i].update(playerTarget, projectiles, camera, friendlyUnits, playerOwnedBases); 
+    enemies[i].update(playerTarget, projectiles, camera, probes, playerOwnedBases, deltaTime); 
     if (enemies[i].isDead) enemies.splice(i, 1); 
   }
 
   for (let i = projectiles.length - 1; i >= 0; i--) { 
     const p = projectiles[i];
     if (p.isEnemy) {
-      p.update(enemyTargets);
+      p.update(enemyTargets, null, deltaTime);
     } else {
-      p.update(playerTargets); 
+      p.update(playerTargets, null, deltaTime); 
     }
     if (p.isRemoved) projectiles.splice(i, 1); 
   }
