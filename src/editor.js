@@ -39,6 +39,11 @@ if (map.obstacles) {
     createEntity('obstacle', toGridCoord(o.x, w, OFFSET_X), toGridCoord(o.z, h, OFFSET_Z), w, h);
   });
 }
+if (map.bombs) {
+  map.bombs.forEach(b => {
+    createEntity('bomb', toGridCoord(b.x, 2, OFFSET_X), toGridCoord(b.z, 2, OFFSET_Z), 2, 2);
+  });
+}
 
 function createEntity(type, x, z, w, h) {
   const el = document.createElement('div');
@@ -47,7 +52,7 @@ function createEntity(type, x, z, w, h) {
   el.dataset.w = w;
   el.dataset.h = h;
   el.draggable = true;
-  el.innerText = type === 'player' ? 'P' : type === 'base' ? 'B' : '';
+  el.innerText = type === 'player' ? 'P' : type === 'base' ? 'B' : type === 'bomb' ? '!' : '';
   
   updateEntityDOM(el, x, z, w, h);
   
@@ -139,7 +144,8 @@ function getMapData() {
   const newMap = {
     playerStart: { x: 0, z: 0 },
     basePosition: { x: 0, z: 0 },
-    obstacles: []
+    obstacles: [],
+    bombs: []
   };
   
   entities.forEach(el => {
@@ -158,6 +164,8 @@ function getMapData() {
       newMap.basePosition = { x: gameX, z: gameZ };
     } else if (type === 'obstacle') {
       newMap.obstacles.push({ x: gameX, z: gameZ, w, h });
+    } else if (type === 'bomb') {
+      newMap.bombs.push({ x: gameX, z: gameZ });
     }
   });
   

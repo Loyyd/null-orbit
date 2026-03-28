@@ -83,6 +83,38 @@ respawnUI.style.cssText = `
 `;
 document.body.appendChild(respawnUI);
 
+// --- ESC Menu ---
+const escMenu = document.createElement('div');
+escMenu.id = 'esc-menu';
+escMenu.innerHTML = `
+  <h1>Paused</h1>
+  <div id="main-menu-content">
+    <button id="resume-btn" class="menu-btn">Resume</button>
+    <button id="restart-btn" class="menu-btn">Restart</button>
+    <button id="options-btn" class="menu-btn">Options</button>
+  </div>
+  <div id="options-menu">
+    <h2>Basic Options</h2>
+    <div class="option-row">
+      <span>Bloom Intensity</span>
+      <input type="range" id="bloom-range" min="0" max="3" step="0.1" value="1.5">
+    </div>
+    <div class="option-row">
+      <span>Ambient Light</span>
+      <input type="range" id="ambient-range" min="0" max="1" step="0.05" value="0.2">
+    </div>
+    <button id="back-btn" class="menu-btn">Back</button>
+  </div>
+`;
+document.body.appendChild(escMenu);
+
+const resumeBtn = document.getElementById('resume-btn');
+const restartBtn = document.getElementById('restart-btn');
+const optionsBtn = document.getElementById('options-btn');
+const backBtn = document.getElementById('back-btn');
+const mainMenuContent = document.getElementById('main-menu-content');
+const optionsMenu = document.getElementById('options-menu');
+
 // --- Post-Processing ---
 const renderScene = new RenderPass(scene, camera);
 const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.5, 0.4, 0.85);
@@ -96,7 +128,6 @@ scene.add(ambientLight);
 const directionalLight = new THREE.DirectionalLight(0xffffff, 1.2); // Stronger star-like light
 directionalLight.position.set(50, 100, 70);
 scene.add(directionalLight);
-
 // --- Game State ---
 const clock = new THREE.Clock();
 let acceleration = 0.0008;
@@ -105,10 +136,41 @@ let currentTier = 1;
 let playerHealth = 100;
 const maxPlayerHealth = 100;
 let isDead = false;
+let isPaused = false;
 let respawnTimer = 0;
 let hasShieldModule = false;
 let shieldActive = false;
 let shieldDuration = 0;
+
+function togglePause() {
+  isPaused = !isPaused;
+  escMenu.style.display = isPaused ? 'flex' : 'none';
+  if (!isPaused) {
+    optionsMenu.style.display = 'none';
+    mainMenuContent.style.display = 'flex';
+  }
+}
+
+resumeBtn.onclick = togglePause;
+restartBtn.onclick = () => window.location.reload();
+optionsBtn.onclick = () => {
+  mainMenuContent.style.display = 'none';
+  optionsMenu.style.display = 'flex';
+};
+backBtn.onclick = () => {
+  optionsMenu.style.display = 'none';
+  mainMenuContent.style.display = 'flex';
+};
+
+document.getElementById('bloom-range').oninput = (e) => bloomPass.strength = parseFloat(e.target.value);
+document.getElementById('ambient-range').oninput = (e) => ambientLight.intensity = parseFloat(e.target.value);
+
+// --- Objects ---
+
+// --- Debug UI ---
+const debugInfo = document.createElement('div');
+debugInfo.id = 'debug-info';
+document.body.appendChild(debugInfo);
 
 // --- Objects ---
 const playerGeometry = new THREE.BoxGeometry(1, 0.5, 2);
@@ -116,6 +178,20 @@ const playerMaterial = new THREE.MeshStandardMaterial({ color: 0x00ff00, emissiv
 const player = new THREE.Mesh(playerGeometry, playerMaterial);
 player.position.set(mapData.playerStart.x, 0, mapData.playerStart.z);
 scene.add(player);
+
+// Player Range Mesh (Debug)
+const createRadiusCircle = (radius, color, opacity) => {
+  const segments = 128;
+  const geometry = new THREE.RingGeometry(radius - 0.2, radius + 0.2, segments);
+  const material = new THREE.MeshBasicMaterial({ color: color, transparent: true, opacity: opacity, side: THREE.DoubleSide });
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.rotation.x = Math.PI / 2;
+  mesh.position.y = -0.4;
+  return mesh;
+};
+const playerRangeMesh = createRadiusCircle(25, 0x00ff00, 0.2);
+playerRangeMesh.visible = false;
+scene.add(playerRangeMesh);
 
 // Shield Visual
 const shieldGeo = new THREE.SphereGeometry(2, 32, 32);
@@ -144,6 +220,8 @@ addCannons(2);
 
 const basePosition = new THREE.Vector3(mapData.basePosition.x, 0, mapData.basePosition.z);
 const base = new BaseStation(scene, basePosition);
+const enemyBasePosition = new THREE.Vector3(mapData.enemyBasePosition.x, 0, mapData.enemyBasePosition.z);
+const enemyBase = new BaseStation(scene, enemyBasePosition, 'enemy');
 const waveManager = new WaveManager(scene);
 
 // --- Obstacles ---
@@ -156,6 +234,19 @@ mapData.obstacles.forEach(o => {
   obstacle.position.set(o.x, 0, o.z);
   scene.add(obstacle);
 });
+
+// --- Bombs ---
+const bombs = [];
+const bombGeo = new THREE.SphereGeometry(1, 16, 16);
+const bombMat = new THREE.MeshStandardMaterial({ color: 0xff0000, emissive: 0xff0000, emissiveIntensity: 1 });
+if (mapData.bombs) {
+  mapData.bombs.forEach(b => {
+    const bomb = new THREE.Mesh(bombGeo, bombMat);
+    bomb.position.set(b.x, 0, b.z);
+    scene.add(bomb);
+    bombs.push(bomb);
+  });
+}
 
 // --- Tactical Grid (Holographic) ---
 const gridHelper = new THREE.GridHelper(2000, 200, 0x00ffff, 0x004444);
@@ -177,8 +268,6 @@ document.getElementById('up-tier2').onclick = () => {
   }
 };
 
-document.getElementById('base-up-cannons').onclick = () => base.addCannon();
-document.getElementById('base-up-spawn').onclick = () => base.upgradeSpawnRate();
 document.getElementById('base-up-shield').onclick = () => {
   hasShieldModule = true;
   shieldBtn.style.display = 'flex';
@@ -201,9 +290,20 @@ const friendlyUnits = [];
 let velocity = new THREE.Vector3();
 const keys = { w: false, a: false, s: false, d: false };
 const targetCameraPos = new THREE.Vector3();
+let activeFriendlyBase = base;
+
+document.getElementById('base-up-cannons').onclick = () => activeFriendlyBase.addCannon();
+document.getElementById('base-up-spawn').onclick = () => activeFriendlyBase.upgradeSpawnRate();
 
 // --- Event Listeners ---
-window.addEventListener('keydown', (e) => { if (keys.hasOwnProperty(e.key.toLowerCase())) keys[e.key.toLowerCase()] = true; });
+window.addEventListener('keydown', (e) => { 
+  if (keys.hasOwnProperty(e.key.toLowerCase())) keys[e.key.toLowerCase()] = true; 
+  if (e.key === 'F2') {
+    isDebugMode = !isDebugMode;
+    debugInfo.style.display = isDebugMode ? 'block' : 'none';
+    playerRangeMesh.visible = isDebugMode;
+  }
+});
 window.addEventListener('keyup', (e) => { if (keys.hasOwnProperty(e.key.toLowerCase())) keys[e.key.toLowerCase()] = false; });
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix();
@@ -238,8 +338,10 @@ function respawn() {
   respawnUI.style.display = 'none';
 }
 
-function animate(time) {
+function animate() {
   requestAnimationFrame(animate);
+  const deltaTime = clock.getDelta();
+  const time = clock.elapsedTime * 1000;
   
   if (!isDead) {
     if (keys.a) player.rotation.y += rotationSpeed;
@@ -252,7 +354,7 @@ function animate(time) {
 
     // Shield logic
     if (shieldActive) {
-      shieldDuration -= 1/60;
+      shieldDuration -= deltaTime;
       shieldMesh.material.opacity = 0.3 + Math.sin(time * 0.01) * 0.1;
       shieldMesh.rotation.y += 0.01;
       if (shieldDuration <= 0) {
@@ -262,27 +364,9 @@ function animate(time) {
       }
     }
   } else {
-    respawnTimer -= 1/60;
+    respawnTimer -= deltaTime;
     respawnUI.innerText = `RESPAWNING IN ${Math.ceil(respawnTimer)}`;
     if (respawnTimer <= 0) respawn();
-  }
-
-  waveManager.update(player.position, enemies);
-  if (!isDead) cannons.forEach(cannon => cannon.update(time, enemies, projectiles));
-
-  const isNearBase = base.update(player.position, enemies, projectiles, time, friendlyUnits, playerHealth, maxPlayerHealth);
-  
-  if (isNearBase && !isDead) {
-    upBtns.style.display = 'block';
-    baseUpgradeMenu.style.display = 'flex';
-    compCont.style.display = 'none';
-    playerHealth = Math.min(maxPlayerHealth, playerHealth + 0.05); 
-  } else {
-    upBtns.style.display = 'none';
-    baseUpgradeMenu.style.display = 'none';
-    compCont.style.display = 'flex';
-    const screenAngle = Math.atan2(basePosition.x - player.position.x, player.position.z - basePosition.z);
-    baseArrow.style.transform = `rotate(${screenAngle}rad)`;
   }
 
   const playerTarget = {
@@ -291,8 +375,53 @@ function animate(time) {
     takeDamage: (amt) => onPlayerHit(amt)
   };
 
+  waveManager.update(player.position, enemies, deltaTime);
+  const allBases = [base, enemyBase];
+  const playerOwnedBases = allBases.filter((station) => station.owner === 'player');
+  const enemyOwnedBases = allBases.filter((station) => station.owner === 'enemy');
+  const playerTargets = [...enemies, ...enemyOwnedBases];
+  const enemyTargets = [playerTarget, ...friendlyUnits, ...playerOwnedBases];
+
+  if (!isDead) cannons.forEach(cannon => cannon.update(time, playerTargets, projectiles));
+
+  const nearOwnedBases = playerOwnedBases.filter(
+    (station) => station.mesh.position.distanceTo(player.position) < station.interactionRange
+  );
+  activeFriendlyBase = nearOwnedBases[0] || playerOwnedBases[0] || base;
+
+  let isNearBase = false;
+  allBases.forEach((station) => {
+    const nearThisBase = station.update(
+      player.position,
+      enemies,
+      projectiles,
+      time,
+      friendlyUnits,
+      playerHealth,
+      maxPlayerHealth,
+      station.owner === 'player' ? playerTargets : enemyTargets,
+      camera
+    );
+    if (station.owner === 'player' && nearThisBase) {
+      isNearBase = true;
+    }
+  });
+  
+  if (isNearBase && !isDead) {
+    upBtns.style.display = 'block';
+    baseUpgradeMenu.style.display = 'flex';
+    compCont.style.display = 'none';
+    playerHealth = Math.min(maxPlayerHealth, playerHealth + 3 * deltaTime); 
+  } else {
+    upBtns.style.display = 'none';
+    baseUpgradeMenu.style.display = 'none';
+    compCont.style.display = 'flex';
+    const screenAngle = Math.atan2(basePosition.x - player.position.x, player.position.z - basePosition.z);
+    baseArrow.style.transform = `rotate(${screenAngle}rad)`;
+  }
+
   for (let i = friendlyUnits.length - 1; i >= 0; i--) {
-    friendlyUnits[i].update(enemies, projectiles, camera);
+    friendlyUnits[i].update(playerTargets, projectiles, camera);
     if (friendlyUnits[i].isDead) friendlyUnits.splice(i, 1);
   }
 
@@ -302,16 +431,16 @@ function animate(time) {
   document.getElementById('stats').innerText = `Dist: ${distPushed}m | Zone: ${waveManager.waveLevel}`;
 
   for (let i = enemies.length - 1; i >= 0; i--) { 
-    enemies[i].update(playerTarget, projectiles, camera, friendlyUnits); 
+    enemies[i].update(playerTarget, projectiles, camera, friendlyUnits, playerOwnedBases); 
     if (enemies[i].isDead) enemies.splice(i, 1); 
   }
 
   for (let i = projectiles.length - 1; i >= 0; i--) { 
     const p = projectiles[i];
     if (p.isEnemy) {
-      p.update([playerTarget, ...friendlyUnits]);
+      p.update(enemyTargets);
     } else {
-      p.update(enemies); 
+      p.update(playerTargets); 
     }
     if (p.isRemoved) projectiles.splice(i, 1); 
   }

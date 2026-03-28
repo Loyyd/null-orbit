@@ -20,7 +20,7 @@ export class Cannon {
     this.lastShotTime = 0;
   }
 
-  update(currentTime, enemies, projectiles) {
+  update(currentTime, targets, projectiles) {
     if (currentTime - this.lastShotTime < this.fireRate) return;
 
     const worldPos = new THREE.Vector3();
@@ -29,7 +29,7 @@ export class Cannon {
     let nearestEnemy = null;
     let minDist = this.range;
 
-    for (const enemy of enemies) {
+    for (const enemy of targets) {
       if (enemy.isDead) continue;
       
       const dist = worldPos.distanceTo(enemy.mesh.position);

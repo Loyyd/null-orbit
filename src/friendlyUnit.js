@@ -70,7 +70,7 @@ export class FriendlyUnit {
     this.material.dispose();
   }
 
-  update(enemies, allProjectiles, camera) {
+  update(targets, allProjectiles, camera) {
     if (this.isDead) return;
 
     if (this.healthBarGroup.visible && camera) {
@@ -80,7 +80,7 @@ export class FriendlyUnit {
     let nearestEnemy = null;
     let minDist = this.aggroRange;
 
-    for (const enemy of enemies) {
+    for (const enemy of targets) {
       if (enemy.isDead) continue;
       const dist = this.mesh.position.distanceTo(enemy.mesh.position);
       if (dist < minDist) {

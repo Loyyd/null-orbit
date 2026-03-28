@@ -91,7 +91,7 @@ export class Enemy {
     this.material.dispose();
   }
 
-  update(playerTarget, allProjectiles, camera, friendlyUnits = []) {
+  update(playerTarget, allProjectiles, camera, friendlyUnits = [], baseTargets = [], deltaTime = 1/60) {
     if (this.isDead) return;
 
     if (this.healthBarGroup.visible) {
@@ -114,11 +114,20 @@ export class Enemy {
         target = unit.mesh;
       }
     }
+
+    for (const base of baseTargets) {
+      if (base.isDead) continue;
+      const dist = this.mesh.position.distanceTo(base.mesh.position);
+      if (dist < minDist) {
+        minDist = dist;
+        target = base.mesh;
+      }
+    }
     
     if (target && minDist < this.aggroRange) {
       const targetPos = target.position;
       const dir = new THREE.Vector3().subVectors(targetPos, this.mesh.position).normalize();
-      this.mesh.position.addScaledVector(dir, this.speed);
+      this.mesh.position.addScaledVector(dir, this.speed * deltaTime * 60);
       this.mesh.lookAt(targetPos);
 
       const currentTime = performance.now();
@@ -131,8 +140,8 @@ export class Enemy {
         this.lastShotTime = currentTime;
       }
     } else {
-      this.mesh.position.z += this.speed * 0.5;
-      this.mesh.position.x += Math.sin(Date.now() * 0.001) * 0.01;
+      this.mesh.position.z += this.speed * 0.5 * deltaTime * 60;
+      this.mesh.position.x += Math.sin(Date.now() * 0.001) * 0.01 * deltaTime * 60;
       this.mesh.rotation.y = Math.PI; 
     }
 

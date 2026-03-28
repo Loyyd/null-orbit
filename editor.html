@@ -50,6 +50,7 @@
         .entity[data-type="player"] { background: rgba(0,255,0,0.5); border-color: #00ff00; border-radius: 50%; }
         .entity[data-type="base"] { background: rgba(0,136,255,0.5); border-color: #0088ff; }
         .entity[data-type="obstacle"] { background: rgba(255,85,0,0.5); border-color: #ff5500; }
+        .entity[data-type="bomb"] { background: rgba(255,0,0,0.7); border-color: #ff0000; border-radius: 50%; box-shadow: 0 0 10px #ff0000; }
         
         .delete-zone {
             margin-top: auto; padding: 20px; background: #500; border: 2px dashed #f00;
@@ -69,6 +70,7 @@
         <div class="palette-item" draggable="true" data-type="obstacle" data-w="4" data-h="4">Large Obstacle (4x4)</div>
         <div class="palette-item" draggable="true" data-type="obstacle" data-w="10" data-h="2">Wall (10x2)</div>
         <div class="palette-item" draggable="true" data-type="obstacle" data-w="2" data-h="10">Wall (2x10)</div>
+        <div class="palette-item" draggable="true" data-type="bomb" data-w="2" data-h="2">BOMB (Red Sphere)</div>
         
         <div class="delete-zone" id="delete-zone">Drag here to DELETE</div>
         

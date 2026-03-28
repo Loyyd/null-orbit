@@ -26,7 +26,8 @@ export class Projectile {
 
     if (Array.isArray(targets)) {
       for (const target of targets) {
-        if (!target.isDead && this.mesh.position.distanceTo(target.mesh.position) < 1.5) {
+        const hitRadius = target.hitRadius || 1.5;
+        if (!target.isDead && this.mesh.position.distanceTo(target.mesh.position) < hitRadius) {
           target.takeDamage(this.damage);
           this.remove();
           break;
