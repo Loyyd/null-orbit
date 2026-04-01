@@ -6,11 +6,9 @@ export class Cannon {
     this.scene = scene;
     this.parent = parent; 
     this.offset = offset;
-    
-    // Visuals
-    const cannonGeo = new THREE.SphereGeometry(0.2, 16, 16);
-    const cannonMat = new THREE.MeshStandardMaterial({ color: 0x888888 });
-    this.mesh = new THREE.Mesh(cannonGeo, cannonMat);
+
+    // Keep a transform-only anchor so the cannon still has a firing position.
+    this.mesh = new THREE.Object3D();
     this.mesh.position.copy(offset);
     this.parent.add(this.mesh);
 
@@ -58,7 +56,5 @@ export class Cannon {
 
   remove() {
     this.parent.remove(this.mesh);
-    this.mesh.geometry.dispose();
-    this.mesh.material.dispose();
   }
 }

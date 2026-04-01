@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { Unit } from './Unit';
+import { attachSharedShipModel } from '../sharedShipModel';
 
 export class Probe extends Unit {
   constructor(scene, spawnPosition, configOverrides = {}) {
@@ -17,19 +18,31 @@ export class Probe extends Unit {
       baseEmissiveIntensity: 0.3,
     });
 
-    this.bodyGeometry = new THREE.BoxGeometry(0.8, 0.4, 1.2);
-    this.bodyMaterial = new THREE.MeshStandardMaterial({
-      color: 0x0088ff,
-      emissive: 0x0088ff,
-      emissiveIntensity: this.baseEmissiveIntensity,
-    });
-    this.bodyMesh = new THREE.Mesh(this.bodyGeometry, this.bodyMaterial);
+    this.bodyMesh = new THREE.Group();
     this.mesh.add(this.bodyMesh);
 
-    const cannonGeo = new THREE.CylinderGeometry(0.1, 0.1, 0.8, 8);
-    const cannonMat = new THREE.MeshStandardMaterial({ color: 0x666666 });
-    this.cannonMesh = new THREE.Mesh(cannonGeo, cannonMat);
-    this.cannonMesh.rotation.x = Math.PI / 2;
+    this.fallbackBodyMesh = new THREE.Mesh(
+      new THREE.BoxGeometry(0.8, 0.4, 1.2),
+      new THREE.MeshStandardMaterial({
+        color: 0x0088ff,
+        emissive: 0x0088ff,
+        emissiveIntensity: this.baseEmissiveIntensity,
+      })
+    );
+    this.bodyMesh.add(this.fallbackBodyMesh);
+
+    attachSharedShipModel(this.bodyMesh, {
+      targetWidth: 0.8,
+      targetHeight: 0.4,
+      targetLength: 1.2,
+      rotationY: -Math.PI / 2,
+    }).then((model) => {
+      if (model) {
+        this.fallbackBodyMesh.visible = false;
+      }
+    });
+
+    this.cannonMesh = new THREE.Object3D();
     this.cannonMesh.position.z = -0.6;
     this.bodyMesh.add(this.cannonMesh);
 

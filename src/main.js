@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { Projectile } from './projectile';
 import { BaseStation } from './base';
 import { WaveManager } from './waveManager';
@@ -136,6 +137,7 @@ scene.add(ambientLight);
 const directionalLight = new THREE.DirectionalLight(0xffffff, 1.2); // Stronger star-like light
 directionalLight.position.set(50, 100, 70);
 scene.add(directionalLight);
+const gltfLoader = new GLTFLoader();
 // --- Game State ---
 const clock = new THREE.Clock();
 let acceleration = gameOptions.player.acceleration;
@@ -159,6 +161,13 @@ const pointer = new THREE.Vector2();
 const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 const SHIELD_COOLDOWN_MS = gameOptions.modules.shieldCooldownMs;
 const YAMATO_COOLDOWN_MS = gameOptions.modules.yamatoCooldownMs;
+const CAMERA_BASE_HEIGHT = 35;
+const CAMERA_BASE_DISTANCE = 25;
+const CAMERA_MIN_ZOOM = 0.2;
+const CAMERA_MAX_ZOOM = 1;
+const CAMERA_ZOOM_STEP = 0.08;
+const CAMERA_ZOOMED_IN_HEIGHT_BONUS = 5;
+let cameraZoom = CAMERA_MAX_ZOOM;
 
 function togglePause() {
   isPaused = !isPaused;
@@ -189,11 +198,121 @@ debugInfo.id = 'debug-info';
 document.body.appendChild(debugInfo);
 
 // --- Objects ---
-const playerGeometry = new THREE.BoxGeometry(1, 0.5, 2);
-const playerMaterial = new THREE.MeshStandardMaterial({ color: 0x00ff00, emissive: 0x00ff00, emissiveIntensity: 0.5 });
-const player = new THREE.Mesh(playerGeometry, playerMaterial);
+const player = new THREE.Group();
 player.position.set(mapData.playerStart.x, 0, mapData.playerStart.z);
 scene.add(player);
+
+const playerVisualRoot = new THREE.Group();
+player.add(playerVisualRoot);
+
+const playerGeometry = new THREE.BoxGeometry(1, 0.5, 2);
+const playerMaterial = new THREE.MeshStandardMaterial({ color: 0x00ff00, emissive: 0x00ff00, emissiveIntensity: 0.5 });
+const fallbackPlayerMesh = new THREE.Mesh(playerGeometry, playerMaterial);
+playerVisualRoot.add(fallbackPlayerMesh);
+let playerModel = null;
+
+let playerBaseColor = 0x00ff00;
+let playerBaseEmissiveIntensity = 0.5;
+
+function forEachObjectMaterial(root, callback) {
+  root.traverse((child) => {
+    if (!child.material) return;
+    const materials = Array.isArray(child.material) ? child.material : [child.material];
+    materials.forEach((material) => {
+      if (material) callback(material);
+    });
+  });
+}
+
+function setPlayerAppearance(colorHex, emissiveIntensity = playerBaseEmissiveIntensity) {
+  playerBaseColor = colorHex;
+  playerBaseEmissiveIntensity = emissiveIntensity;
+
+  forEachObjectMaterial(fallbackPlayerMesh, (material) => {
+    material.color?.setHex?.(colorHex);
+    material.emissive?.setHex?.(colorHex);
+    if (material.emissiveIntensity !== undefined) {
+      material.emissiveIntensity = emissiveIntensity;
+    }
+  });
+
+  if (!playerModel) return;
+  forEachObjectMaterial(playerModel, (material) => {
+    if (material.emissiveIntensity !== undefined) {
+      material.emissiveIntensity = emissiveIntensity;
+    }
+  });
+}
+
+function fitPlayerModel(model) {
+  model.rotation.y = -Math.PI / 2;
+
+  const bounds = new THREE.Box3().setFromObject(model);
+  const size = bounds.getSize(new THREE.Vector3());
+  if (size.lengthSq() === 0) return;
+
+  const targetWidth = 2.1;
+  const targetHeight = 1.05;
+  const targetLength = 4.2;
+  const scale = Math.min(
+    targetWidth / Math.max(size.x, 0.001),
+    targetHeight / Math.max(size.y, 0.001),
+    targetLength / Math.max(size.z, 0.001)
+  );
+
+  model.scale.setScalar(scale);
+
+  const scaledBounds = new THREE.Box3().setFromObject(model);
+  const scaledCenter = scaledBounds.getCenter(new THREE.Vector3());
+  const scaledSize = scaledBounds.getSize(new THREE.Vector3());
+  model.position.sub(scaledCenter);
+  model.position.y += scaledSize.y * 0.5;
+}
+
+function fitStaticModel(model, {
+  targetWidth,
+  targetHeight,
+  targetLength,
+  rotationX = 0,
+  rotationY = 0,
+  rotationZ = 0,
+  offsetY = 0,
+}) {
+  model.rotation.set(rotationX, rotationY, rotationZ);
+
+  const bounds = new THREE.Box3().setFromObject(model);
+  const size = bounds.getSize(new THREE.Vector3());
+  if (size.lengthSq() === 0) return;
+
+  const scale = Math.min(
+    targetWidth / Math.max(size.x, 0.001),
+    targetHeight / Math.max(size.y, 0.001),
+    targetLength / Math.max(size.z, 0.001)
+  );
+
+  model.scale.setScalar(scale);
+
+  const scaledBounds = new THREE.Box3().setFromObject(model);
+  const scaledCenter = scaledBounds.getCenter(new THREE.Vector3());
+  const scaledSize = scaledBounds.getSize(new THREE.Vector3());
+  model.position.sub(scaledCenter);
+  model.position.y += scaledSize.y * 0.5 + offsetY;
+}
+
+gltfLoader.load(
+  '/models/player_ship.glb',
+  (gltf) => {
+    fallbackPlayerMesh.visible = false;
+    playerModel = gltf.scene;
+    fitPlayerModel(playerModel);
+    playerVisualRoot.add(playerModel);
+    setPlayerAppearance(playerBaseColor, playerBaseEmissiveIntensity);
+  },
+  undefined,
+  (error) => {
+    console.error('Failed to load player ship model:', error);
+  }
+);
 
 // Player Range Mesh (Debug)
 const createRadiusCircle = (radius, color, opacity) => {
@@ -396,14 +515,65 @@ const navigationGrid = createGridAdapter({
 
 // --- Obstacles ---
 const obstacleColliders = [];
+const rockSpinners = [];
 const obsMat = new THREE.MeshStandardMaterial({ color: 0x8a8a8a, metalness: 0.7, roughness: 0.35 });
+let rocksModelTemplate = null;
+gltfLoader.load(
+  '/models/rocks.glb',
+  (gltf) => {
+    rocksModelTemplate = gltf.scene;
+    mapData.obstacles.forEach((o) => {
+      const visualRoot = o._visualRoot;
+      if (!visualRoot) return;
+
+      const rockModel = rocksModelTemplate.clone(true);
+      const spinAxis = new THREE.Vector3(
+        Math.random() - 0.5,
+        Math.random() * 0.35 + 0.65,
+        Math.random() - 0.5
+      ).normalize();
+      const spinSpeed = 0.025 + Math.random() * 0.035;
+      fitStaticModel(rockModel, {
+        targetWidth: Math.max((o.w || 2) * 1.2, 2.4),
+        targetHeight: 3,
+        targetLength: Math.max((o.h || 2) * 1.2, 2.4),
+        rotationX: (Math.random() - 0.5) * 0.35,
+        rotationY: Math.random() * Math.PI * 2,
+        rotationZ: (Math.random() - 0.5) * 0.35,
+        offsetY: -0.2,
+      });
+      visualRoot.add(rockModel);
+      rockSpinners.push({
+        model: rockModel,
+        axis: spinAxis,
+        speed: spinSpeed,
+      });
+      if (o._fallbackMesh) {
+        o._fallbackMesh.visible = false;
+      }
+    });
+  },
+  undefined,
+  (error) => {
+    console.error('Failed to load rocks model:', error);
+  }
+);
 mapData.obstacles.forEach(o => {
   const w = o.w || 2;
   const h = o.h || 2;
-  const obsGeo = new THREE.BoxGeometry(w, 2, h);
-  const obstacle = new THREE.Mesh(obsGeo, obsMat);
+  const obstacle = new THREE.Group();
   obstacle.position.set(o.x, 0, o.z);
   scene.add(obstacle);
+
+  const visualRoot = new THREE.Group();
+  obstacle.add(visualRoot);
+
+  const obsGeo = new THREE.BoxGeometry(w, 2, h);
+  const fallbackMesh = new THREE.Mesh(obsGeo, obsMat);
+  obstacle.add(fallbackMesh);
+
+  o._visualRoot = visualRoot;
+  o._fallbackMesh = fallbackMesh;
   obstacleColliders.push({ x: o.x, z: o.z, w, h });
 });
 const occupancyMap = buildOccupancyMap(obstacleColliders, navigationGrid, gameOptions.flowField.occupancyPadding);
@@ -420,11 +590,53 @@ const enemyController = new FlowFieldUnitController(scene, occupancyMap, navigat
 const bombs = [];
 const bombGeo = new THREE.SphereGeometry(1, 16, 16);
 const bombMat = new THREE.MeshStandardMaterial({ color: 0xff0000, emissive: 0xff0000, emissiveIntensity: 1 });
+let bombModelTemplate = null;
+gltfLoader.load(
+  '/models/bomb.glb',
+  (gltf) => {
+    bombModelTemplate = gltf.scene;
+    bombs.forEach((bomb) => {
+      const bombModel = bombModelTemplate.clone(true);
+      fitStaticModel(bombModel, {
+        targetWidth: 2.5,
+        targetHeight: 2.5,
+        targetLength: 2.5,
+        rotationY: Math.random() * Math.PI * 2,
+        offsetY: -0.15,
+      });
+      bomb.add(bombModel);
+      if (bomb.userData.fallbackMesh) {
+        bomb.userData.fallbackMesh.visible = false;
+      }
+    });
+  },
+  undefined,
+  (error) => {
+    console.error('Failed to load bomb model:', error);
+  }
+);
 if (mapData.bombs) {
   mapData.bombs.forEach(b => {
-    const bomb = new THREE.Mesh(bombGeo, bombMat);
+    const bomb = new THREE.Group();
     bomb.position.set(b.x, 0, b.z);
+    const fallbackMesh = new THREE.Mesh(bombGeo, bombMat);
+    bomb.add(fallbackMesh);
+    bomb.userData.fallbackMesh = fallbackMesh;
     scene.add(bomb);
+
+    if (bombModelTemplate) {
+      const bombModel = bombModelTemplate.clone(true);
+      fitStaticModel(bombModel, {
+        targetWidth: 2.5,
+        targetHeight: 2.5,
+        targetLength: 2.5,
+        rotationY: Math.random() * Math.PI * 2,
+        offsetY: -0.15,
+      });
+      bomb.add(bombModel);
+      fallbackMesh.visible = false;
+    }
+
     bombs.push(bomb);
   });
 }
@@ -443,8 +655,7 @@ document.getElementById('up-tier2').onclick = () => {
   if (currentTier < 2) {
     currentTier = 2;
     player.scale.set(1.5, 1.5, 1.5);
-    player.material.color.setHex(0x00ffff);
-    player.material.emissive.setHex(0x00ffff);
+    setPlayerAppearance(0x00ffff, playerBaseEmissiveIntensity);
     document.getElementById('up-tier2').innerText = "Evolution: Maxed";
   }
 };
@@ -511,13 +722,38 @@ renderer.domElement.addEventListener('pointerdown', (event) => {
   targetPoint.y = 0;
   fireYamatoStrike(targetPoint);
 });
+renderer.domElement.addEventListener('wheel', (event) => {
+  event.preventDefault();
+  const zoomDelta = event.deltaY > 0 ? CAMERA_ZOOM_STEP : -CAMERA_ZOOM_STEP;
+  cameraZoom = THREE.MathUtils.clamp(cameraZoom + zoomDelta, CAMERA_MIN_ZOOM, CAMERA_MAX_ZOOM);
+}, { passive: false });
 
 function onPlayerHit(damage) {
   if (isDead || shieldActive) return;
   playerHealth -= damage;
-  player.material.emissiveIntensity = 2;
-  setTimeout(() => { player.material.emissiveIntensity = 0.5; }, 100);
+  setPlayerAppearance(playerBaseColor, 2);
+  setTimeout(() => { setPlayerAppearance(playerBaseColor, playerBaseEmissiveIntensity); }, 100);
   if (playerHealth <= 0) triggerDeath();
+}
+
+function disposeObjectMaterials(material) {
+  if (Array.isArray(material)) {
+    material.forEach((entry) => entry?.dispose?.());
+    return;
+  }
+  material?.dispose?.();
+}
+
+function destroyBomb(bombIndex) {
+  const bomb = bombs[bombIndex];
+  if (!bomb) return;
+
+  scene.remove(bomb);
+  bomb.traverse((child) => {
+    child.geometry?.dispose?.();
+    disposeObjectMaterials(child.material);
+  });
+  bombs.splice(bombIndex, 1);
 }
 
 function triggerDeath() {
@@ -554,6 +790,10 @@ function animate() {
   const deltaTime = clock.getDelta();
   const time = clock.elapsedTime * 1000;
   refreshModuleButtons();
+  for (let i = 0; i < rockSpinners.length; i++) {
+    const spinner = rockSpinners[i];
+    spinner.model.rotateOnAxis(spinner.axis, spinner.speed * deltaTime);
+  }
 
   if (isDebugMode) {
     playerRangeMesh.position.copy(player.position);
@@ -589,12 +829,15 @@ WAVE: ${waveManager.waveLevel}`;
     velocity.multiplyScalar(Math.pow(0.991, deltaTime * 60)); // Resolution-independent drag
 
     // Bomb collision
-    bombs.forEach(bomb => {
+    for (let i = bombs.length - 1; i >= 0; i--) {
+      const bomb = bombs[i];
       const dist = player.position.distanceTo(bomb.position);
       if (dist < 1.5 && !isDead) { // Collision radius
+        destroyBomb(i);
         triggerDeath();
+        break;
       }
-    });
+    }
 
     // Shield logic
     if (shieldActive) {
@@ -721,7 +964,12 @@ WAVE: ${waveManager.waveLevel}`;
   }
 
   if (!isDead) {
-    targetCameraPos.set(player.position.x, 35, player.position.z + 25);
+    const zoomInAmount = CAMERA_MAX_ZOOM - cameraZoom;
+    targetCameraPos.set(
+      player.position.x,
+      (CAMERA_BASE_HEIGHT * cameraZoom) + (zoomInAmount * CAMERA_ZOOMED_IN_HEIGHT_BONUS / (CAMERA_MAX_ZOOM - CAMERA_MIN_ZOOM)),
+      player.position.z + (CAMERA_BASE_DISTANCE * cameraZoom)
+    );
     camera.position.lerp(targetCameraPos, 0.05);
     camera.lookAt(player.position);
   }

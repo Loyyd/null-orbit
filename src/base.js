@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { Projectile } from './projectile';
 import { Probe } from './units/Probe';
 
@@ -23,6 +24,18 @@ const TEAM_CONFIG = {
   },
 };
 
+const gltfLoader = new GLTFLoader();
+
+function forEachObjectMaterial(root, callback) {
+  root.traverse((child) => {
+    if (!child.material) return;
+    const materials = Array.isArray(child.material) ? child.material : [child.material];
+    materials.forEach((material) => {
+      if (material) callback(material);
+    });
+  });
+}
+
 export class BaseStation {
   constructor(scene, position, owner = 'player', gameOptions = {}) {
     this.scene = scene;
@@ -43,12 +56,23 @@ export class BaseStation {
     this.isDead = false;
     this.baseEmissiveIntensity = 1;
     this.debugVisible = false;
+    this.baseModel = null;
 
-    this.geometry = new THREE.CylinderGeometry(5, 7, 3, 32);
     this.material = new THREE.MeshStandardMaterial();
-    this.mesh = new THREE.Mesh(this.geometry, this.material);
+    this.mesh = new THREE.Group();
     this.mesh.position.copy(position);
     scene.add(this.mesh);
+
+    this.visualRoot = new THREE.Group();
+    this.mesh.add(this.visualRoot);
+
+    this.fallbackBody = new THREE.Mesh(new THREE.CylinderGeometry(5, 7, 3, 32), this.material);
+    this.mesh.add(this.fallbackBody);
+    this.fallbackTower = new THREE.Mesh(new THREE.CylinderGeometry(2, 2, 8, 16), this.material);
+    this.fallbackTower.position.y = 4;
+    this.mesh.add(this.fallbackTower);
+
+    this.loadBaseModel();
 
     const createRadiusCircle = (radius, opacity) => {
       const segments = 128;
@@ -75,11 +99,6 @@ export class BaseStation {
     this.interactionRangeMesh.position.copy(position);
     this.interactionRangeMesh.position.y = -0.35;
     this.interactionRangeMesh.visible = false;
-
-    const towerGeo = new THREE.CylinderGeometry(2, 2, 8, 16);
-    this.tower = new THREE.Mesh(towerGeo, this.material);
-    this.tower.position.y = 4;
-    this.mesh.add(this.tower);
 
     this.healthBarGroup = new THREE.Group();
     const hpBgGeo = new THREE.PlaneGeometry(8, 0.5);
@@ -126,11 +145,62 @@ export class BaseStation {
     this.material.color.setHex(config.bodyColor);
     this.material.emissive.setHex(config.emissive);
     this.material.emissiveIntensity = this.baseEmissiveIntensity;
+    if (this.baseModel) {
+      forEachObjectMaterial(this.baseModel, (material) => {
+        if (material.emissiveIntensity !== undefined) {
+          material.emissiveIntensity = this.baseEmissiveIntensity * 0.35;
+        }
+      });
+    }
     this.fireRangeMesh.material.color.setHex(config.fireRangeColor);
     this.interactionRangeMesh.material.color.setHex(config.interactionColor);
     this.beamMat.color.setHex(config.healingColor);
     this.beamMat.emissive.setHex(config.healingColor);
     this.hpFg.material.color.setHex(config.healthColor);
+  }
+
+  loadBaseModel() {
+    gltfLoader.load(
+      '/models/base.glb',
+      (gltf) => {
+        this.baseModel = gltf.scene;
+        this.fitBaseModel(this.baseModel);
+        this.visualRoot.add(this.baseModel);
+        this.fallbackBody.visible = false;
+        this.fallbackTower.visible = false;
+        this.applyOwnerVisuals();
+      },
+      undefined,
+      (error) => {
+        console.error('Failed to load base model:', error);
+      }
+    );
+  }
+
+  fitBaseModel(model) {
+    model.rotation.y = -Math.PI / 2;
+
+    const bounds = new THREE.Box3().setFromObject(model);
+    const size = bounds.getSize(new THREE.Vector3());
+    if (size.lengthSq() === 0) return;
+
+    const targetWidth = 12;
+    const targetHeight = 10;
+    const targetLength = 12;
+    const scale = Math.min(
+      targetWidth / Math.max(size.x, 0.001),
+      targetHeight / Math.max(size.y, 0.001),
+      targetLength / Math.max(size.z, 0.001)
+    );
+
+    model.scale.setScalar(scale);
+
+    const scaledBounds = new THREE.Box3().setFromObject(model);
+    const scaledCenter = scaledBounds.getCenter(new THREE.Vector3());
+    const scaledSize = scaledBounds.getSize(new THREE.Vector3());
+    model.position.sub(scaledCenter);
+    model.position.y += scaledSize.y * 0.5;
+    model.position.y -= 1.2;
   }
 
   updateHealthBar() {
@@ -179,8 +249,18 @@ export class BaseStation {
     this.health -= amount;
     this.updateHealthBar();
     this.material.emissiveIntensity = 0.7;
+    if (this.baseModel) {
+      forEachObjectMaterial(this.baseModel, (material) => {
+        if (material.emissiveIntensity !== undefined) {
+          material.emissiveIntensity = 1.5;
+        }
+      });
+    }
     setTimeout(() => {
       this.material.emissiveIntensity = this.baseEmissiveIntensity;
+      if (this.baseModel) {
+        this.applyOwnerVisuals();
+      }
     }, 80);
 
     if (this.health <= 0) {

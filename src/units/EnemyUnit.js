@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { Unit } from './Unit';
+import { attachSharedShipModel } from '../sharedShipModel';
 export class EnemyUnit extends Unit {
   constructor(scene, spawnPosition, config) {
     super(scene, spawnPosition, {
@@ -16,22 +17,33 @@ export class EnemyUnit extends Unit {
     this.cannonOffsets = config.cannonOffsets;
     this.defaultLookRotationY = Math.PI;
 
-    this.bodyGeometry = new THREE.BoxGeometry(this.size, this.size * 0.5, this.size * 1.5);
-    this.bodyMaterial = new THREE.MeshStandardMaterial({
-      color: config.bodyColor,
-      emissive: config.bodyColor,
-      emissiveIntensity: this.baseEmissiveIntensity,
-    });
-
-    this.bodyMesh = new THREE.Mesh(this.bodyGeometry, this.bodyMaterial);
+    this.bodyMesh = new THREE.Group();
     this.mesh.add(this.bodyMesh);
+
+    this.fallbackBodyMesh = new THREE.Mesh(
+      new THREE.BoxGeometry(this.size, this.size * 0.5, this.size * 1.5),
+      new THREE.MeshStandardMaterial({
+        color: config.bodyColor,
+        emissive: config.bodyColor,
+        emissiveIntensity: this.baseEmissiveIntensity,
+      })
+    );
+    this.bodyMesh.add(this.fallbackBodyMesh);
+
+    attachSharedShipModel(this.bodyMesh, {
+      targetWidth: this.size,
+      targetHeight: this.size * 0.5,
+      targetLength: this.size * 1.5,
+      rotationY: -Math.PI / 2,
+    }).then((model) => {
+      if (model) {
+        this.fallbackBodyMesh.visible = false;
+      }
+    });
 
     this.cannons = [];
     this.cannonOffsets.forEach((offset) => {
-      const cannonGeo = new THREE.CylinderGeometry(0.2, 0.2, 1.5, 8);
-      const cannonMat = new THREE.MeshStandardMaterial({ color: 0x333333 });
-      const cannon = new THREE.Mesh(cannonGeo, cannonMat);
-      cannon.rotation.x = Math.PI / 2;
+      const cannon = new THREE.Object3D();
       cannon.position.copy(offset);
       this.bodyMesh.add(cannon);
       this.cannons.push(cannon);

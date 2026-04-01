@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { Projectile } from '../projectile';
+import { createSharedShipInstancedRenderer } from '../sharedShipModel';
 
 const UNIT_TYPES = {
   spark: {
@@ -112,9 +113,30 @@ export class FlowFieldUnitController {
     this.mesh.receiveShadow = false;
     this.mesh.count = 0;
     scene.add(this.mesh);
+    this.shipRenderer = null;
+
+    createSharedShipInstancedRenderer(scene, this.maxUnits, {
+      targetWidth: 1,
+      targetHeight: 0.45,
+      targetLength: 1.4,
+      rotationY: -Math.PI / 2,
+    }).then((renderer) => {
+      this.shipRenderer = renderer;
+      this.scene.remove(this.mesh);
+      this.geometry.dispose();
+      this.material.dispose();
+      this.mesh = null;
+
+      for (let index = 0; index < this.count; index++) {
+        this.syncInstanceAt(index);
+      }
+      this.shipRenderer.setCount(this.count);
+      this.shipRenderer.flush();
+    }).catch((error) => {
+      console.error('Failed to create instanced ship renderer:', error);
+    });
 
     this.dummy = new THREE.Object3D();
-    this.color = new THREE.Color();
     this.spawnPosition = new THREE.Vector3();
     this.projectilePosition = new THREE.Vector3();
   }
@@ -130,18 +152,8 @@ export class FlowFieldUnitController {
 
     const config = this.unitTypes[type] || this.unitTypes.spark;
     const index = this.count++;
-    const cell = this.findNearestWalkableCell(
-      this.grid.clampCellX(this.grid.toCellX(spawnPosition.x)),
-      this.grid.clampCellY(this.grid.toCellY(spawnPosition.z))
-    );
-
-    if (!cell) {
-      this.count--;
-      return null;
-    }
-
-    this.posX[index] = this.grid.toWorldX(cell.x);
-    this.posZ[index] = this.grid.toWorldZ(cell.y);
+    this.posX[index] = spawnPosition.x;
+    this.posZ[index] = spawnPosition.z;
     this.velX[index] = 0;
     this.velZ[index] = 0;
     this.yaw[index] = Math.PI;
@@ -169,7 +181,11 @@ export class FlowFieldUnitController {
     proxy.mesh.position.set(this.posX[index], 0, this.posZ[index]);
     this.targets.push(proxy);
     this.syncInstanceAt(index);
-    this.mesh.count = this.count;
+    if (this.shipRenderer) {
+      this.shipRenderer.setCount(this.count);
+    } else {
+      this.mesh.count = this.count;
+    }
     return proxy;
   }
 
@@ -217,9 +233,12 @@ export class FlowFieldUnitController {
 
     this.targets.pop();
     this.count--;
-    this.mesh.count = this.count;
-
-    if (this.count >= 0) {
+    if (this.shipRenderer) {
+      this.shipRenderer.setCount(this.count);
+      this.shipRenderer.hideInstance(this.count);
+      this.shipRenderer.flush();
+    } else if (this.count >= 0) {
+      this.mesh.count = this.count;
       this.dummy.position.set(0, -9999, 0);
       this.dummy.rotation.set(0, 0, 0);
       this.dummy.scale.setScalar(1);
@@ -326,13 +345,22 @@ export class FlowFieldUnitController {
       }
     }
 
-    this.mesh.instanceMatrix.needsUpdate = true;
-    if (this.mesh.instanceColor) {
-      this.mesh.instanceColor.needsUpdate = true;
+    if (this.shipRenderer) {
+      this.shipRenderer.flush();
+    } else {
+      this.mesh.instanceMatrix.needsUpdate = true;
+      if (this.mesh.instanceColor) {
+        this.mesh.instanceColor.needsUpdate = true;
+      }
     }
   }
 
   dispose() {
+    if (this.shipRenderer) {
+      this.shipRenderer.dispose();
+      return;
+    }
+
     this.scene.remove(this.mesh);
     this.geometry.dispose();
     this.material.dispose();
@@ -415,12 +443,21 @@ export class FlowFieldUnitController {
   }
 
   syncInstanceAt(index) {
+    if (this.shipRenderer) {
+      this.shipRenderer.setInstanceTransform(
+        index,
+        this.posX[index],
+        this.posZ[index],
+        this.yaw[index],
+        this.scale[index]
+      );
+      return;
+    }
+
     this.dummy.position.set(this.posX[index], 0, this.posZ[index]);
     this.dummy.rotation.set(0, this.yaw[index], 0);
     this.dummy.scale.set(this.scale[index], this.scale[index], this.scale[index]);
     this.dummy.updateMatrix();
     this.mesh.setMatrixAt(index, this.dummy.matrix);
-    this.color.setHex(this.typeId[index] === 1 ? this.unitTypes.pulsar.baseColor : this.unitTypes.spark.baseColor);
-    this.mesh.setColorAt(index, this.color);
   }
 }
