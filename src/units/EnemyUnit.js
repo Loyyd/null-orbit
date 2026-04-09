@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { Unit } from './Unit';
-import { attachSharedShipModel } from '../sharedShipModel';
+import { attachSharedModel } from '../sharedShipModel';
 export class EnemyUnit extends Unit {
   constructor(scene, spawnPosition, config) {
     super(scene, spawnPosition, {
@@ -30,12 +30,12 @@ export class EnemyUnit extends Unit {
     );
     this.bodyMesh.add(this.fallbackBodyMesh);
 
-    attachSharedShipModel(this.bodyMesh, {
+    attachSharedModel(this.bodyMesh, {
       targetWidth: this.size,
       targetHeight: this.size * 0.5,
       targetLength: this.size * 1.5,
       rotationY: -Math.PI / 2,
-    }).then((model) => {
+    }, config.modelPath || '/models/player_ship.glb').then((model) => {
       if (model) {
         this.fallbackBodyMesh.visible = false;
       }

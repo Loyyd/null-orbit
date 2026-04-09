@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 
 const loader = new GLTFLoader();
-let shipTemplatePromise = null;
+const modelTemplatePromises = new Map();
 
 function disposeMaterial(material) {
   if (Array.isArray(material)) {
@@ -42,34 +42,37 @@ export function fitModelToBounds(model, {
   model.position.y += scaledSize.y * 0.5 + offsetY;
 }
 
-export function loadSharedShipTemplate() {
-  if (!shipTemplatePromise) {
-    shipTemplatePromise = loader.loadAsync('/models/player_ship.glb').then((gltf) => gltf.scene);
+export function loadSharedModelTemplate(modelPath = '/models/player_ship.glb') {
+  if (!modelTemplatePromises.has(modelPath)) {
+    modelTemplatePromises.set(
+      modelPath,
+      loader.loadAsync(modelPath).then((gltf) => gltf.scene)
+    );
   }
-  return shipTemplatePromise;
+  return modelTemplatePromises.get(modelPath);
 }
 
-export async function cloneSharedShipModel(options) {
-  const template = await loadSharedShipTemplate();
+export async function cloneSharedModel(options, modelPath = '/models/player_ship.glb') {
+  const template = await loadSharedModelTemplate(modelPath);
   const model = template.clone(true);
   fitModelToBounds(model, options);
   return model;
 }
 
-export async function attachSharedShipModel(parent, options, onError = null) {
+export async function attachSharedModel(parent, options, modelPath = '/models/player_ship.glb', onError = null) {
   try {
-    const model = await cloneSharedShipModel(options);
+    const model = await cloneSharedModel(options, modelPath);
     parent.add(model);
     return model;
   } catch (error) {
-    console.error('Failed to load shared ship model:', error);
+    console.error(`Failed to load model ${modelPath}:`, error);
     onError?.(error);
     return null;
   }
 }
 
-export async function createSharedShipInstancedRenderer(scene, maxCount, fitOptions) {
-  const template = await cloneSharedShipModel(fitOptions);
+export async function createSharedModelInstancedRenderer(scene, maxCount, fitOptions, modelPath = '/models/player_ship.glb') {
+  const template = await cloneSharedModel(fitOptions, modelPath);
   template.updateMatrixWorld(true);
 
   const parts = [];
@@ -94,6 +97,22 @@ export async function createSharedShipInstancedRenderer(scene, maxCount, fitOpti
   });
 
   return new SharedShipInstancedRenderer(scene, parts);
+}
+
+export function loadSharedShipTemplate() {
+  return loadSharedModelTemplate('/models/player_ship.glb');
+}
+
+export async function cloneSharedShipModel(options) {
+  return cloneSharedModel(options, '/models/player_ship.glb');
+}
+
+export async function attachSharedShipModel(parent, options, onError = null) {
+  return attachSharedModel(parent, options, '/models/player_ship.glb', onError);
+}
+
+export async function createSharedShipInstancedRenderer(scene, maxCount, fitOptions) {
+  return createSharedModelInstancedRenderer(scene, maxCount, fitOptions, '/models/player_ship.glb');
 }
 
 class SharedShipInstancedRenderer {

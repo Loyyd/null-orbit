@@ -36,13 +36,13 @@ export class WaveManager {
       playerPos.z - (this.waveOptions.spawnDistanceBehindPlayer ?? 80)
     );
 
-    const spawnPulsar = Math.random() < (
+    const spawnColossus = Math.random() < (
       (this.waveOptions.pulsarChanceBase ?? 0.1) +
       (this.waveLevel * (this.waveOptions.pulsarChancePerWave ?? 0.05))
     );
 
     for (let i = 0; i < squadSize; i++) {
-      const isPulsar = spawnPulsar && i === 0;
+      const isColossus = spawnColossus && i === 0;
       
       const offset = new THREE.Vector3(
         (Math.random() - 0.5) * (this.waveOptions.squadSpread ?? 15),
@@ -50,7 +50,7 @@ export class WaveManager {
         (Math.random() - 0.5) * (this.waveOptions.squadSpread ?? 15)
       );
       
-      const type = isPulsar ? 'pulsar' : 'spark';
+      const type = isColossus ? 'colossus' : 'spark';
       enemyController.spawn(squadCenter.clone().add(offset), type, this.waveLevel);
     }
   }

@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 
+const LASER_SPEED_MULTIPLIER = 1.22;
+
 export class Projectile {
   constructor(scene, spawnPosition, direction, color = 0xff0000, isEnemy = false, damage = 1, maxTravelDistance = 400) {
     this.scene = scene;
@@ -16,7 +18,7 @@ export class Projectile {
     this.mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction.clone().normalize());
     
     this.direction = direction.clone().normalize();
-    this.speed = isEnemy ? 0.0875 : 0.3; 
+    this.speed = (isEnemy ? 0.0875 : 0.3) * LASER_SPEED_MULTIPLIER;
     this.isRemoved = false;
 
     scene.add(this.mesh);

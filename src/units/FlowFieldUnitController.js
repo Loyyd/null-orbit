@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { Projectile } from '../projectile';
-import { createSharedShipInstancedRenderer } from '../sharedShipModel';
+import { createSharedModelInstancedRenderer } from '../sharedShipModel';
 
 const UNIT_TYPES = {
   spark: {
@@ -14,7 +14,7 @@ const UNIT_TYPES = {
     projectileColor: 0xaa00ff,
     hitRadius: 1.1,
   },
-  pulsar: {
+  colossus: {
     scale: 2.5,
     baseColor: 0xaa55ff,
     speed: 0.022,
@@ -63,12 +63,12 @@ export class FlowFieldUnitController {
         shootInterval: this.enemyConfig.sparkShootInterval ?? UNIT_TYPES.spark.shootInterval,
         damagePerShot: this.enemyConfig.sparkDamage ?? UNIT_TYPES.spark.damagePerShot,
       },
-      pulsar: {
-        ...UNIT_TYPES.pulsar,
-        speed: this.enemyConfig.pulsarSpeed ?? UNIT_TYPES.pulsar.speed,
-        aggroRange: this.enemyConfig.pulsarAggroRange ?? UNIT_TYPES.pulsar.aggroRange,
-        shootInterval: this.enemyConfig.pulsarShootInterval ?? UNIT_TYPES.pulsar.shootInterval,
-        damagePerShot: this.enemyConfig.pulsarDamage ?? UNIT_TYPES.pulsar.damagePerShot,
+      colossus: {
+        ...UNIT_TYPES.colossus,
+        speed: this.enemyConfig.colossusSpeed ?? this.enemyConfig.pulsarSpeed ?? UNIT_TYPES.colossus.speed,
+        aggroRange: this.enemyConfig.colossusAggroRange ?? this.enemyConfig.pulsarAggroRange ?? UNIT_TYPES.colossus.aggroRange,
+        shootInterval: this.enemyConfig.colossusShootInterval ?? this.enemyConfig.pulsarShootInterval ?? UNIT_TYPES.colossus.shootInterval,
+        damagePerShot: this.enemyConfig.colossusDamage ?? this.enemyConfig.pulsarDamage ?? UNIT_TYPES.colossus.damagePerShot,
       },
     };
     this.maxUnits = options.maxUnits || 1024;
@@ -81,6 +81,7 @@ export class FlowFieldUnitController {
     this.obstacleAvoidanceStrength = options.obstacleAvoidanceStrength || 0.35;
     this.acceleration = options.acceleration || 0.35;
     this.boundsLimit = options.boundsLimit || 180;
+    this.onEnemyDestroyed = options.onEnemyDestroyed || null;
 
     this.posX = new Float32Array(this.maxUnits);
     this.posZ = new Float32Array(this.maxUnits);
@@ -113,27 +114,34 @@ export class FlowFieldUnitController {
     this.mesh.receiveShadow = false;
     this.mesh.count = 0;
     scene.add(this.mesh);
-    this.shipRenderer = null;
+    this.modelRenderers = {
+      spark: null,
+      colossus: null,
+    };
+    this.loadedModelRendererCount = 0;
 
-    createSharedShipInstancedRenderer(scene, this.maxUnits, {
+    createSharedModelInstancedRenderer(scene, this.maxUnits, {
       targetWidth: 1,
       targetHeight: 0.45,
       targetLength: 1.4,
       rotationY: -Math.PI / 2,
-    }).then((renderer) => {
-      this.shipRenderer = renderer;
-      this.scene.remove(this.mesh);
-      this.geometry.dispose();
-      this.material.dispose();
-      this.mesh = null;
-
-      for (let index = 0; index < this.count; index++) {
-        this.syncInstanceAt(index);
-      }
-      this.shipRenderer.setCount(this.count);
-      this.shipRenderer.flush();
+    }, '/models/player_ship.glb').then((renderer) => {
+      this.modelRenderers.spark = renderer;
+      this.onModelRendererReady();
     }).catch((error) => {
-      console.error('Failed to create instanced ship renderer:', error);
+      console.error('Failed to create spark instanced renderer:', error);
+    });
+
+    createSharedModelInstancedRenderer(scene, this.maxUnits, {
+      targetWidth: 1.8,
+      targetHeight: 1.4,
+      targetLength: 2.8,
+      rotationY: -Math.PI / 2,
+    }, '/models/colossus.glb').then((renderer) => {
+      this.modelRenderers.colossus = renderer;
+      this.onModelRendererReady();
+    }).catch((error) => {
+      console.error('Failed to create colossus instanced renderer:', error);
     });
 
     this.dummy = new THREE.Object3D();
@@ -150,7 +158,8 @@ export class FlowFieldUnitController {
       return null;
     }
 
-    const config = this.unitTypes[type] || this.unitTypes.spark;
+    const normalizedType = type === 'pulsar' ? 'colossus' : type;
+    const config = this.unitTypes[normalizedType] || this.unitTypes.spark;
     const index = this.count++;
     this.posX[index] = spawnPosition.x;
     this.posZ[index] = spawnPosition.z;
@@ -164,7 +173,7 @@ export class FlowFieldUnitController {
     const pulsarHealthPerWave = this.enemyConfig.pulsarHealthPerWave ?? 2;
 
     this.speed[index] = config.speed + (type === 'spark' ? waveLevel * sparkSpeedPerWave : 0);
-    this.maxHealth[index] = type === 'spark'
+    this.maxHealth[index] = normalizedType === 'spark'
       ? sparkHealthBase + Math.floor(waveLevel / sparkHealthWaveDivisor)
       : pulsarHealthBase + (waveLevel * pulsarHealthPerWave);
     this.health[index] = this.maxHealth[index];
@@ -174,15 +183,15 @@ export class FlowFieldUnitController {
     this.lastShotTime[index] = 0;
     this.damagePerShot[index] = config.damagePerShot;
     this.scale[index] = config.scale;
-    this.typeId[index] = type === 'pulsar' ? 1 : 0;
+    this.typeId[index] = normalizedType === 'colossus' ? 1 : 0;
 
-    const proxy = createTargetProxy(this, index, type);
+    const proxy = createTargetProxy(this, index, normalizedType);
     proxy.hitRadius = this.hitRadius[index];
     proxy.mesh.position.set(this.posX[index], 0, this.posZ[index]);
     this.targets.push(proxy);
     this.syncInstanceAt(index);
-    if (this.shipRenderer) {
-      this.shipRenderer.setCount(this.count);
+    if (this.hasModelRenderers()) {
+      this.updateRendererCounts();
     } else {
       this.mesh.count = this.count;
     }
@@ -194,11 +203,12 @@ export class FlowFieldUnitController {
 
     this.health[index] -= amount;
     if (this.health[index] <= 0) {
-      this.removeAt(index);
+      this.removeAt(index, 'destroyed');
     }
   }
 
-  removeAt(index) {
+  removeAt(index, reason = 'despawned') {
+    const removedTypeId = this.typeId[index];
     const lastIndex = this.count - 1;
     const removedProxy = this.targets[index];
     if (removedProxy) {
@@ -233,10 +243,15 @@ export class FlowFieldUnitController {
 
     this.targets.pop();
     this.count--;
-    if (this.shipRenderer) {
-      this.shipRenderer.setCount(this.count);
-      this.shipRenderer.hideInstance(this.count);
-      this.shipRenderer.flush();
+    if (reason === 'destroyed') {
+      this.onEnemyDestroyed?.({
+        type: removedTypeId === 1 ? 'colossus' : 'spark',
+      });
+    }
+    if (this.hasModelRenderers()) {
+      this.hideAllModelRenderersAt(this.count);
+      this.updateRendererCounts();
+      this.flushModelRenderers();
     } else if (this.count >= 0) {
       this.mesh.count = this.count;
       this.dummy.position.set(0, -9999, 0);
@@ -265,12 +280,12 @@ export class FlowFieldUnitController {
         !isFiniteNumber(this.velX[index]) ||
         !isFiniteNumber(this.velZ[index])
       ) {
-        this.removeAt(index);
+        this.removeAt(index, 'invalid');
         continue;
       }
 
       if (Math.abs(unitZ - navigationTarget.z) > this.boundsLimit) {
-        this.removeAt(index);
+        this.removeAt(index, 'out_of_bounds');
         continue;
       }
 
@@ -318,7 +333,7 @@ export class FlowFieldUnitController {
 
       const proxy = this.targets[index];
       if (!proxy?.mesh?.position) {
-        this.removeAt(index);
+        this.removeAt(index, 'invalid');
         continue;
       }
       proxy.mesh.position.set(this.posX[index], 0, this.posZ[index]);
@@ -335,7 +350,7 @@ export class FlowFieldUnitController {
             this.scene,
             this.projectilePosition,
             this.spawnPosition,
-            this.unitTypes[this.typeId[index] === 1 ? 'pulsar' : 'spark'].projectileColor,
+            this.unitTypes[this.typeId[index] === 1 ? 'colossus' : 'spark'].projectileColor,
             true,
             this.damagePerShot[index],
             this.aggroRange[index] * 2
@@ -345,8 +360,8 @@ export class FlowFieldUnitController {
       }
     }
 
-    if (this.shipRenderer) {
-      this.shipRenderer.flush();
+    if (this.hasModelRenderers()) {
+      this.flushModelRenderers();
     } else {
       this.mesh.instanceMatrix.needsUpdate = true;
       if (this.mesh.instanceColor) {
@@ -356,8 +371,13 @@ export class FlowFieldUnitController {
   }
 
   dispose() {
-    if (this.shipRenderer) {
-      this.shipRenderer.dispose();
+    if (this.modelRenderers.spark) {
+      this.modelRenderers.spark.dispose();
+    }
+    if (this.modelRenderers.colossus) {
+      this.modelRenderers.colossus.dispose();
+    }
+    if (this.hasModelRenderers()) {
       return;
     }
 
@@ -443,14 +463,17 @@ export class FlowFieldUnitController {
   }
 
   syncInstanceAt(index) {
-    if (this.shipRenderer) {
-      this.shipRenderer.setInstanceTransform(
+    if (this.hasModelRenderers()) {
+      const rendererKey = this.typeId[index] === 1 ? 'colossus' : 'spark';
+      const otherRendererKey = rendererKey === 'spark' ? 'colossus' : 'spark';
+      this.modelRenderers[rendererKey]?.setInstanceTransform(
         index,
         this.posX[index],
         this.posZ[index],
         this.yaw[index],
         this.scale[index]
       );
+      this.modelRenderers[otherRendererKey]?.hideInstance(index);
       return;
     }
 
@@ -459,5 +482,40 @@ export class FlowFieldUnitController {
     this.dummy.scale.set(this.scale[index], this.scale[index], this.scale[index]);
     this.dummy.updateMatrix();
     this.mesh.setMatrixAt(index, this.dummy.matrix);
+  }
+
+  hasModelRenderers() {
+    return Boolean(this.modelRenderers.spark && this.modelRenderers.colossus);
+  }
+
+  onModelRendererReady() {
+    this.loadedModelRendererCount += 1;
+    if (!this.hasModelRenderers()) return;
+
+    this.scene.remove(this.mesh);
+    this.geometry.dispose();
+    this.material.dispose();
+    this.mesh = null;
+
+    for (let index = 0; index < this.count; index++) {
+      this.syncInstanceAt(index);
+    }
+    this.updateRendererCounts();
+    this.flushModelRenderers();
+  }
+
+  updateRendererCounts() {
+    this.modelRenderers.spark?.setCount(this.count);
+    this.modelRenderers.colossus?.setCount(this.count);
+  }
+
+  flushModelRenderers() {
+    this.modelRenderers.spark?.flush();
+    this.modelRenderers.colossus?.flush();
+  }
+
+  hideAllModelRenderersAt(index) {
+    this.modelRenderers.spark?.hideInstance(index);
+    this.modelRenderers.colossus?.hideInstance(index);
   }
 }

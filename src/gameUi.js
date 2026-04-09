@@ -1,3 +1,5 @@
+import plasmaCellIcon from './assets/plasma_cell.png';
+
 export function createGameUi({
   onResume,
   onRestart,
@@ -17,6 +19,17 @@ export function createGameUi({
   healthBar.id = 'health-bar';
   healthContainer.appendChild(healthBar);
   document.body.appendChild(healthContainer);
+
+  const currencyBar = document.createElement('div');
+  currencyBar.id = 'currency-bar';
+  currencyBar.innerHTML = `
+    <img id="currency-icon" alt="Plasma cell" src="${plasmaCellIcon}">
+    <div id="currency-copy">
+      <div id="currency-label">Plasma Cells</div>
+      <div id="currency-value">0</div>
+    </div>
+  `;
+  document.body.appendChild(currencyBar);
 
   const upgradeMenu = document.createElement('div');
   upgradeMenu.id = 'upgrade-menu';
@@ -94,6 +107,18 @@ export function createGameUi({
   debugInfo.id = 'debug-info';
   document.body.appendChild(debugInfo);
 
+  const debugQuicklinks = document.createElement('div');
+  debugQuicklinks.id = 'debug-quicklinks';
+  debugQuicklinks.innerHTML = `
+    <button type="button" class="debug-link-btn" id="debug-editor-link">Open Editor</button>
+    <button type="button" class="debug-link-btn" id="debug-options-link">Open Options</button>
+  `;
+  document.body.appendChild(debugQuicklinks);
+
+  const damageOverlay = document.createElement('div');
+  damageOverlay.id = 'damage-overlay';
+  document.body.appendChild(damageOverlay);
+
   const elements = {
     stats: upgradeMenu.querySelector('#stats'),
     upgradeButtons: upgradeMenu.querySelector('#upgrade-buttons'),
@@ -104,6 +129,9 @@ export function createGameUi({
     yamatoUpgradeButton: baseUpgradeMenu.querySelector('#base-up-yamato'),
     mainMenuContent: escMenu.querySelector('#main-menu-content'),
     optionsMenu: escMenu.querySelector('#options-menu'),
+    debugEditorLink: debugQuicklinks.querySelector('#debug-editor-link'),
+    debugOptionsLink: debugQuicklinks.querySelector('#debug-options-link'),
+    currencyValue: currencyBar.querySelector('#currency-value'),
   };
 
   function showPauseMainMenu() {
@@ -128,6 +156,8 @@ export function createGameUi({
   elements.yamatoUpgradeButton.onclick = onBuyYamato;
   baseUpgradeMenu.querySelector('#base-up-cannons').onclick = onBaseUpgradeCannons;
   baseUpgradeMenu.querySelector('#base-up-spawn').onclick = onBaseUpgradeSpawn;
+  elements.debugEditorLink.onclick = () => window.open('/editor.html', '_blank', 'noopener,noreferrer');
+  elements.debugOptionsLink.onclick = () => window.open('/options.html', '_blank', 'noopener,noreferrer');
 
   return {
     moduleBar,
@@ -139,6 +169,9 @@ export function createGameUi({
     },
     setHealthPercent(percent) {
       healthBar.style.width = `${percent}%`;
+    },
+    setCurrency(amount) {
+      elements.currencyValue.innerText = `${amount}`;
     },
     setStatsText(text) {
       elements.stats.innerText = text;
@@ -159,9 +192,16 @@ export function createGameUi({
     },
     setDebugVisible(visible) {
       debugInfo.style.display = visible ? 'block' : 'none';
+      debugQuicklinks.style.display = visible ? 'flex' : 'none';
     },
     setDebugText(text) {
       debugInfo.innerText = text;
+    },
+    flashDamage() {
+      damageOverlay.classList.remove('active');
+      // Force restart of the fade animation for rapid consecutive hits.
+      void damageOverlay.offsetWidth;
+      damageOverlay.classList.add('active');
     },
     setTier2ButtonLabel(text) {
       elements.tier2Button.innerText = text;

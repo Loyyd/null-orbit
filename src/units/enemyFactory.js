@@ -1,9 +1,9 @@
 import { Spark } from './Spark';
-import { Pulsar } from './Pulsar';
+import { Colossus } from './Colossus';
 
 export function createEnemyUnit(scene, spawnPosition, type = 'spark') {
-  if (type === 'pulsar') {
-    return new Pulsar(scene, spawnPosition);
+  if (type === 'colossus' || type === 'pulsar') {
+    return new Colossus(scene, spawnPosition);
   }
 
   return new Spark(scene, spawnPosition);

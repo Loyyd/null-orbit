@@ -15,6 +15,7 @@ import { movePlayerWithObstaclePhysics } from './obstacleNavigation';
 import { buildOccupancyMap, createGridAdapter } from './navigation/grid';
 import { FlowFieldUnitController } from './units/FlowFieldUnitController';
 import { createGameUi } from './gameUi';
+import { createPlayerAbilities } from './playerAbilities';
 
 // --- Setup ---
 const scene = new THREE.Scene();
@@ -49,25 +50,6 @@ scene.add(directionalLight);
 const gltfLoader = new GLTFLoader();
 // --- Game State ---
 const clock = new THREE.Clock();
-let acceleration = gameOptions.player.acceleration;
-let rotationSpeed = gameOptions.player.rotationSpeed;
-let currentTier = 1;
-let playerHealth = gameOptions.player.maxHealth;
-const maxPlayerHealth = gameOptions.player.maxHealth;
-let isDead = false;
-let isPaused = false;
-let respawnTimer = 0;
-let hasShieldModule = false;
-let hasYamatoModule = false;
-let shieldActive = false;
-let shieldDuration = 0;
-let isDebugMode = false;
-let selectedModuleId = null;
-const purchasedModules = [];
-const yamatoEffects = [];
-const raycaster = new THREE.Raycaster();
-const pointer = new THREE.Vector2();
-const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 const SHIELD_COOLDOWN_MS = gameOptions.modules.shieldCooldownMs;
 const YAMATO_COOLDOWN_MS = gameOptions.modules.yamatoCooldownMs;
 const CAMERA_BASE_HEIGHT = 35;
@@ -76,11 +58,40 @@ const CAMERA_MIN_ZOOM = 0.2;
 const CAMERA_MAX_ZOOM = 1;
 const CAMERA_ZOOM_STEP = 0.08;
 const CAMERA_ZOOMED_IN_HEIGHT_BONUS = 5;
-let cameraZoom = CAMERA_MAX_ZOOM;
+
+const playerState = {
+  acceleration: gameOptions.player.acceleration,
+  rotationSpeed: gameOptions.player.rotationSpeed,
+  currentTier: 1,
+  health: gameOptions.player.maxHealth,
+  maxHealth: gameOptions.player.maxHealth,
+  isDead: false,
+  respawnTimer: 0,
+  velocity: new THREE.Vector3(),
+  abilities: {
+    shieldOwned: false,
+    shieldActive: false,
+    shieldDuration: 0,
+    yamatoOwned: false,
+    selectedModuleId: null,
+  },
+  plasmaCells: 0,
+};
+const gameState = {
+  isPaused: false,
+  isDebugMode: false,
+  cameraZoom: CAMERA_MAX_ZOOM,
+  cameraShakeTime: 0,
+  cameraShakeStrength: 0,
+};
+const CAMERA_SHAKE_DURATION = 1;
+const raycaster = new THREE.Raycaster();
+const pointer = new THREE.Vector2();
+const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 
 function togglePause() {
-  isPaused = !isPaused;
-  ui.setPaused(isPaused);
+  gameState.isPaused = !gameState.isPaused;
+  ui.setPaused(gameState.isPaused);
 }
 
 // --- Objects ---
@@ -227,6 +238,7 @@ const shieldMesh = new THREE.Mesh(shieldGeo, shieldMat);
 shieldMesh.visible = false;
 player.add(shieldMesh);
 
+let abilities;
 const ui = createGameUi({
   onResume: togglePause,
   onRestart: () => window.location.reload(),
@@ -238,170 +250,26 @@ const ui = createGameUi({
   },
   onUpgradeCannons: () => addCannons(2),
   onUpgradeSpeed: () => {
-    acceleration += 0.0025;
-    rotationSpeed += 0.0025;
+    playerState.acceleration += 0.0025;
+    playerState.rotationSpeed += 0.0025;
   },
   onUpgradeTier2: () => {
-    if (currentTier < 2) {
-      currentTier = 2;
+    if (playerState.currentTier < 2) {
+      playerState.currentTier = 2;
       player.scale.set(1.5, 1.5, 1.5);
       setPlayerAppearance(0x00ffff, playerBaseEmissiveIntensity);
       ui.setTier2ButtonLabel('Evolution: Maxed');
     }
   },
-  onBuyShield: () => {
-    if (hasShieldModule) return;
-    hasShieldModule = true;
-    addPurchasedModule('shield', 'S', 'Shield', activateShieldModule, SHIELD_COOLDOWN_MS);
-    ui.hideShieldUpgrade();
-  },
-  onBuyYamato: () => {
-    if (hasYamatoModule) return;
-    hasYamatoModule = true;
-    addPurchasedModule('yamato', 'Y', 'Yamato', activateYamatoModule, YAMATO_COOLDOWN_MS);
-    ui.hideYamatoUpgrade();
-  },
+  onBuyShield: () => abilities.buyShieldModule(),
+  onBuyYamato: () => abilities.buyYamatoModule(),
   onBaseUpgradeCannons: () => activeFriendlyBase.addCannon(),
   onBaseUpgradeSpawn: () => activeFriendlyBase.upgradeSpawnRate(),
 });
+ui.setCurrency(playerState.plasmaCells);
 
 function getAbilityTargets() {
   return [...enemies, ...(enemyBase.owner === 'enemy' ? [enemyBase] : [])];
-}
-
-function updateModuleBarVisibility() {
-  ui.moduleBar.style.display = purchasedModules.length > 0 && !isDead ? 'flex' : 'none';
-}
-
-function getPurchasedModule(id) {
-  return purchasedModules.find((module) => module.id === id) || null;
-}
-
-function getModuleCooldownRemaining(module, now = performance.now()) {
-  return Math.max(0, module.cooldownMs - (now - module.lastUsedAt));
-}
-
-function refreshModuleButtons() {
-  const now = performance.now();
-
-  purchasedModules.forEach((module, index) => {
-    const coolingDown = getModuleCooldownRemaining(module, now) > 0;
-    module.slot.textContent = `${index + 1}`;
-    module.button.classList.toggle('active', module.id === 'shield' ? shieldActive : selectedModuleId === module.id);
-    module.button.classList.toggle('targeting', selectedModuleId === module.id);
-    module.button.classList.toggle('cooldown', coolingDown);
-    module.button.disabled = coolingDown;
-    module.button.title = coolingDown
-      ? `${Math.ceil(getModuleCooldownRemaining(module, now) / 1000)}s cooldown`
-      : module.label;
-  });
-}
-
-function clearSelectedModule() {
-  selectedModuleId = null;
-  renderer.domElement.style.cursor = '';
-  refreshModuleButtons();
-}
-
-function activateShieldModule() {
-  if (!hasShieldModule || shieldActive || isDead) return;
-  const shieldModule = getPurchasedModule('shield');
-  if (!shieldModule || getModuleCooldownRemaining(shieldModule) > 0) return;
-
-  shieldModule.lastUsedAt = performance.now();
-  shieldActive = true;
-  shieldDuration = gameOptions.modules.shieldDuration;
-  shieldMesh.visible = true;
-  refreshModuleButtons();
-}
-
-function spawnYamatoEffect(position, radius) {
-  const ring = new THREE.Mesh(
-    new THREE.RingGeometry(radius * 0.15, radius * 0.2, 48),
-    new THREE.MeshBasicMaterial({
-      color: 0x66d9ff,
-      transparent: true,
-      opacity: 0.85,
-      side: THREE.DoubleSide,
-    })
-  );
-  ring.rotation.x = Math.PI / 2;
-  ring.position.copy(position);
-  ring.position.y = 0.15;
-  scene.add(ring);
-
-  const flash = new THREE.Mesh(
-    new THREE.SphereGeometry(radius * 0.2, 24, 24),
-    new THREE.MeshBasicMaterial({
-      color: 0xb8f3ff,
-      transparent: true,
-      opacity: 0.45,
-    })
-  );
-  flash.position.copy(position);
-  flash.position.y = 0.75;
-  scene.add(flash);
-
-  yamatoEffects.push({
-    ring,
-    flash,
-    age: 0,
-    duration: 0.45,
-    radius,
-  });
-}
-
-function fireYamatoStrike(position) {
-  if (!hasYamatoModule || isDead) return;
-  const yamatoModule = getPurchasedModule('yamato');
-  if (!yamatoModule || getModuleCooldownRemaining(yamatoModule) > 0) return;
-
-  const radius = gameOptions.modules.yamatoRadius;
-  const damage = gameOptions.modules.yamatoDamage;
-  yamatoModule.lastUsedAt = performance.now();
-  spawnYamatoEffect(position, radius);
-
-  getAbilityTargets().forEach((target) => {
-    if (target.isDead) return;
-    const impactRadius = radius + (target.hitRadius || 0);
-    if (target.mesh.position.distanceTo(position) <= impactRadius) {
-      target.takeDamage(damage);
-    }
-  });
-
-  clearSelectedModule();
-}
-
-function activateYamatoModule() {
-  if (!hasYamatoModule || isDead) return;
-  const yamatoModule = getPurchasedModule('yamato');
-  if (!yamatoModule || getModuleCooldownRemaining(yamatoModule) > 0) return;
-
-  selectedModuleId = selectedModuleId === 'yamato' ? null : 'yamato';
-  renderer.domElement.style.cursor = selectedModuleId === 'yamato' ? 'crosshair' : '';
-  refreshModuleButtons();
-}
-
-function addPurchasedModule(id, icon, label, activate, cooldownMs) {
-  if (purchasedModules.some((module) => module.id === id)) {
-    return;
-  }
-
-  const button = document.createElement('button');
-  button.type = 'button';
-  button.className = 'module-btn';
-  button.innerHTML = `
-    <span class="module-slot"></span>
-    <span class="module-icon">${icon}</span>
-    <span class="module-label">${label}</span>
-  `;
-
-  const slot = button.querySelector('.module-slot');
-  button.addEventListener('click', activate);
-  ui.moduleBar.appendChild(button);
-  purchasedModules.push({ id, button, slot, label, activate, cooldownMs, lastUsedAt: -Infinity });
-  updateModuleBarVisibility();
-  refreshModuleButtons();
 }
 
 const cannons = [];
@@ -451,16 +319,17 @@ gltfLoader.load(
       if (!visualRoot) return;
 
       const rockModel = rocksModelTemplate.clone(true);
+      const sizeMultiplier = 0.8 + (Math.random() * 0.85);
       const spinAxis = new THREE.Vector3(
         Math.random() - 0.5,
         Math.random() * 0.35 + 0.65,
         Math.random() - 0.5
       ).normalize();
-      const spinSpeed = 0.025 + Math.random() * 0.035;
+      const spinSpeed = 0.075 + Math.random() * 0.16;
       fitStaticModel(rockModel, {
-        targetWidth: Math.max((o.w || 2) * 1.2, 2.4),
-        targetHeight: 3,
-        targetLength: Math.max((o.h || 2) * 1.2, 2.4),
+        targetWidth: Math.max((o.w || 2) * 1.2, 2.4) * sizeMultiplier,
+        targetHeight: 3 * sizeMultiplier,
+        targetLength: Math.max((o.h || 2) * 1.2, 2.4) * sizeMultiplier,
         rotationX: (Math.random() - 0.5) * 0.35,
         rotationY: Math.random() * Math.PI * 2,
         rotationZ: (Math.random() - 0.5) * 0.35,
@@ -508,6 +377,10 @@ const enemyController = new FlowFieldUnitController(scene, occupancyMap, navigat
   obstacleAvoidanceStrength: gameOptions.enemy.obstacleAvoidanceStrength,
   boundsLimit: gameOptions.enemy.boundsLimit,
   enemyConfig: gameOptions.enemy,
+  onEnemyDestroyed: () => {
+    playerState.plasmaCells += 10;
+    ui.setCurrency(playerState.plasmaCells);
+  },
 });
 
 // --- Bombs ---
@@ -576,27 +449,32 @@ scene.add(gridHelper);
 const enemies = enemyController.targets;
 const projectiles = [];
 const probes = [];
-let velocity = new THREE.Vector3();
 const keys = { w: false, a: false, s: false, d: false };
 const targetCameraPos = new THREE.Vector3();
 let activeFriendlyBase = base;
+abilities = createPlayerAbilities({
+  scene,
+  renderer,
+  ui,
+  playerState,
+  shieldMesh,
+  gameOptions,
+  getAbilityTargets,
+});
 
 // --- Event Listeners ---
 window.addEventListener('keydown', (e) => { 
   if (keys.hasOwnProperty(e.key.toLowerCase())) keys[e.key.toLowerCase()] = true; 
   if (e.key === 'Escape') togglePause();
   if (e.key >= '1' && e.key <= '9') {
-    const module = purchasedModules[Number(e.key) - 1];
-    if (module) {
-      module.activate();
-    }
+    abilities.handleHotkey(Number(e.key) - 1);
   }
   if (e.key === 'F2') {
-    isDebugMode = !isDebugMode;
-    ui.setDebugVisible(isDebugMode);
-    playerRangeMesh.visible = isDebugMode;
-    base.setDebugVisible(isDebugMode);
-    enemyBase.setDebugVisible(isDebugMode);
+    gameState.isDebugMode = !gameState.isDebugMode;
+    ui.setDebugVisible(gameState.isDebugMode);
+    playerRangeMesh.visible = gameState.isDebugMode;
+    base.setDebugVisible(gameState.isDebugMode);
+    enemyBase.setDebugVisible(gameState.isDebugMode);
   }
 });
 window.addEventListener('keyup', (e) => { if (keys.hasOwnProperty(e.key.toLowerCase())) keys[e.key.toLowerCase()] = false; });
@@ -605,7 +483,7 @@ window.addEventListener('resize', () => {
   renderer.setSize(window.innerWidth, window.innerHeight); composer.setSize(window.innerWidth, window.innerHeight);
 });
 renderer.domElement.addEventListener('pointerdown', (event) => {
-  if (selectedModuleId !== 'yamato' || isPaused || isDead) return;
+  if (!abilities.isTargetingModule('yamato') || gameState.isPaused || playerState.isDead) return;
 
   const rect = renderer.domElement.getBoundingClientRect();
   pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
@@ -615,20 +493,23 @@ renderer.domElement.addEventListener('pointerdown', (event) => {
   const targetPoint = new THREE.Vector3();
   if (!raycaster.ray.intersectPlane(groundPlane, targetPoint)) return;
   targetPoint.y = 0;
-  fireYamatoStrike(targetPoint);
+  abilities.fireYamatoStrike(targetPoint);
 });
 renderer.domElement.addEventListener('wheel', (event) => {
   event.preventDefault();
   const zoomDelta = event.deltaY > 0 ? CAMERA_ZOOM_STEP : -CAMERA_ZOOM_STEP;
-  cameraZoom = THREE.MathUtils.clamp(cameraZoom + zoomDelta, CAMERA_MIN_ZOOM, CAMERA_MAX_ZOOM);
+  gameState.cameraZoom = THREE.MathUtils.clamp(gameState.cameraZoom + zoomDelta, CAMERA_MIN_ZOOM, CAMERA_MAX_ZOOM);
 }, { passive: false });
 
 function onPlayerHit(damage) {
-  if (isDead || shieldActive) return;
-  playerHealth -= damage;
+  if (playerState.isDead || playerState.abilities.shieldActive) return;
+  playerState.health -= damage;
+  gameState.cameraShakeTime = CAMERA_SHAKE_DURATION;
+  gameState.cameraShakeStrength = 0.38;
+  ui.flashDamage();
   setPlayerAppearance(playerBaseColor, 2);
   setTimeout(() => { setPlayerAppearance(playerBaseColor, playerBaseEmissiveIntensity); }, 100);
-  if (playerHealth <= 0) triggerDeath();
+  if (playerState.health <= 0) triggerDeath();
 }
 
 function disposeObjectMaterials(material) {
@@ -652,121 +533,124 @@ function destroyBomb(bombIndex) {
 }
 
 function triggerDeath() {
-  isDead = true;
-  playerHealth = 0;
+  playerState.isDead = true;
+  playerState.health = 0;
   player.visible = false;
-  shieldActive = false;
-  shieldMesh.visible = false;
-  clearSelectedModule();
-  updateModuleBarVisibility();
-  respawnTimer = 10;
+  abilities.onDeath();
+  playerState.respawnTimer = 10;
   ui.setRespawnVisible(true);
-  velocity.set(0, 0, 0);
+  playerState.velocity.set(0, 0, 0);
 }
 
 function respawn() {
-  isDead = false;
-  playerHealth = maxPlayerHealth;
+  playerState.isDead = false;
+  playerState.health = playerState.maxHealth;
   player.visible = true;
   player.position.copy(basePosition);
   ui.setRespawnVisible(false);
-  updateModuleBarVisibility();
-  refreshModuleButtons();
+  abilities.onRespawn();
 }
 
-function animate() {
-  requestAnimationFrame(animate);
-
-  if (isPaused) {
-    composer.render();
-    return;
-  }
-  
-  const deltaTime = clock.getDelta();
-  const time = clock.elapsedTime * 1000;
-  refreshModuleButtons();
+function updateRockSpinners(deltaTime) {
   for (let i = 0; i < rockSpinners.length; i++) {
     const spinner = rockSpinners[i];
     spinner.model.rotateOnAxis(spinner.axis, spinner.speed * deltaTime);
   }
+}
 
-  if (isDebugMode) {
-    playerRangeMesh.position.copy(player.position);
-    playerRangeMesh.position.y = -0.4;
-    const fps = Math.round(1 / (deltaTime || 0.01));
-    ui.setDebugText(
+function updateDebugOverlay(deltaTime) {
+  if (!gameState.isDebugMode) return;
+
+  playerRangeMesh.position.copy(player.position);
+  playerRangeMesh.position.y = -0.4;
+  const fps = Math.round(1 / (deltaTime || 0.01));
+  ui.setDebugText(
 `[DEBUG MODE]
 FPS: ${fps}
 POS: X:${player.position.x.toFixed(2)} Y:${player.position.y.toFixed(2)} Z:${player.position.z.toFixed(2)}
-VEL: ${velocity.length().toFixed(4)}
-HP: ${playerHealth.toFixed(1)} / ${maxPlayerHealth}
+VEL: ${playerState.velocity.length().toFixed(4)}
+HP: ${playerState.health.toFixed(1)} / ${playerState.maxHealth}
 ENEMIES: ${enemies.length}
 PROJECTILES: ${projectiles.length}
 PROBES: ${probes.length}
 WAVE: ${waveManager.waveLevel}`
-    );
-  }
+  );
+}
 
-  if (!isDead) {
+function updatePlayerMovement(deltaTime) {
+  if (keys.a) player.rotation.y += playerState.rotationSpeed * deltaTime * 60;
+  if (keys.d) player.rotation.y -= playerState.rotationSpeed * deltaTime * 60;
 
-    if (keys.a) player.rotation.y += rotationSpeed * deltaTime * 60;
-    if (keys.d) player.rotation.y -= rotationSpeed * deltaTime * 60;
-    const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion);
-    if (keys.w) velocity.addScaledVector(dir, acceleration * deltaTime * 60);
-    if (keys.s) velocity.addScaledVector(dir, -acceleration * deltaTime * 60);
-    const playerMovement = movePlayerWithObstaclePhysics(player.position, velocity, 1.1, obstacleColliders, {
-      bounceDamping: 0.2,
-      wallFriction: 0.84,
-      pushbackDistance: 0.22,
-      stepCount: 5,
-    });
-    player.position.copy(playerMovement.position);
-    velocity.copy(playerMovement.velocity);
-    velocity.multiplyScalar(Math.pow(0.991, deltaTime * 60)); // Resolution-independent drag
+  const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion);
+  if (keys.w) playerState.velocity.addScaledVector(dir, playerState.acceleration * deltaTime * 60);
+  if (keys.s) playerState.velocity.addScaledVector(dir, -playerState.acceleration * deltaTime * 60);
 
-    // Bomb collision
-    for (let i = bombs.length - 1; i >= 0; i--) {
-      const bomb = bombs[i];
-      const dist = player.position.distanceTo(bomb.position);
-      if (dist < 1.5 && !isDead) { // Collision radius
-        destroyBomb(i);
-        triggerDeath();
-        break;
-      }
+  const playerMovement = movePlayerWithObstaclePhysics(player.position, playerState.velocity, 1.1, obstacleColliders, {
+    bounceDamping: 0.2,
+    wallFriction: 0.84,
+    pushbackDistance: 0.22,
+    stepCount: 5,
+  });
+
+  player.position.copy(playerMovement.position);
+  playerState.velocity.copy(playerMovement.velocity);
+  playerState.velocity.multiplyScalar(Math.pow(0.991, deltaTime * 60)); // Resolution-independent drag
+}
+
+function updateBombCollisions() {
+  for (let i = bombs.length - 1; i >= 0; i--) {
+    const bomb = bombs[i];
+    const dist = player.position.distanceTo(bomb.position);
+    if (dist < 1.5 && !playerState.isDead) {
+      destroyBomb(i);
+      triggerDeath();
+      break;
     }
-
-    // Shield logic
-    if (shieldActive) {
-      shieldDuration -= deltaTime;
-      shieldMesh.material.opacity = 0.3 + Math.sin(time * 0.01) * 0.1;
-      shieldMesh.rotation.y += 0.01;
-      if (shieldDuration <= 0) {
-        shieldActive = false;
-        shieldMesh.visible = false;
-        refreshModuleButtons();
-      }
-    }
-  } else {
-    respawnTimer -= deltaTime;
-    ui.setRespawnText(`RESPAWNING IN ${Math.ceil(respawnTimer)}`);
-    if (respawnTimer <= 0) respawn();
   }
+}
 
-  const playerTarget = {
-    get isDead() { return isDead; },
+function updateShieldEffect(deltaTime, time) {
+  abilities.updateShieldEffect(deltaTime, time);
+}
+
+function updateRespawnTimer(deltaTime) {
+  playerState.respawnTimer -= deltaTime;
+  ui.setRespawnText(`RESPAWNING IN ${Math.ceil(playerState.respawnTimer)}`);
+  if (playerState.respawnTimer <= 0) respawn();
+}
+
+function createPlayerTarget() {
+  return {
+    get isDead() { return playerState.isDead; },
     get mesh() { return player; },
     takeDamage: (amt) => onPlayerHit(amt)
   };
+}
 
+function buildCombatState(deltaTime) {
+  const playerTarget = createPlayerTarget();
   waveManager.update(player.position, enemyController, deltaTime);
+
   const allBases = [base, enemyBase];
   const playerOwnedBases = allBases.filter((station) => station.owner === 'player');
   const enemyOwnedBases = allBases.filter((station) => station.owner === 'enemy');
   const playerTargets = [...enemies, ...enemyOwnedBases];
   const enemyTargets = [playerTarget, ...probes, ...playerOwnedBases];
 
-  if (!isDead) cannons.forEach(cannon => cannon.update(time, playerTargets, projectiles));
+  return {
+    allBases,
+    playerOwnedBases,
+    playerTargets,
+    enemyTargets,
+  };
+}
 
+function updateCannons(time, playerTargets) {
+  if (playerState.isDead) return;
+  cannons.forEach((cannon) => cannon.update(time, playerTargets, projectiles));
+}
+
+function updateBases(time, allBases, playerOwnedBases, playerTargets, enemyTargets) {
   const nearOwnedBases = playerOwnedBases.filter(
     (station) => station.mesh.position.distanceTo(player.position) < station.interactionRange
   );
@@ -780,91 +664,131 @@ WAVE: ${waveManager.waveLevel}`
       projectiles,
       time,
       probes,
-      playerHealth,
-      maxPlayerHealth,
+      playerState.health,
+      playerState.maxHealth,
       station.owner === 'player' ? playerTargets : enemyTargets,
       camera
     );
+
     if (station.owner === 'player' && nearThisBase) {
       isNearBase = true;
     }
   });
-  
-  const canUseUpgradeMenus = !isDead && (isNearBase || isDebugMode);
+
+  return isNearBase;
+}
+
+function updateBaseUiAndHealing(isNearBase, deltaTime) {
+  const canUseUpgradeMenus = !playerState.isDead && (isNearBase || gameState.isDebugMode);
 
   if (canUseUpgradeMenus) {
     ui.setUpgradeMenusVisible(true);
     if (isNearBase) {
-      playerHealth = Math.min(maxPlayerHealth, playerHealth + (gameOptions.base.healingRate * deltaTime));
+      playerState.health = Math.min(playerState.maxHealth, playerState.health + (gameOptions.base.healingRate * deltaTime));
     }
-  } else {
-    ui.setUpgradeMenusVisible(false);
-    const screenAngle = Math.atan2(basePosition.x - player.position.x, player.position.z - basePosition.z);
-    ui.setCompassAngle(screenAngle);
+    return;
   }
 
+  ui.setUpgradeMenusVisible(false);
+  const screenAngle = Math.atan2(basePosition.x - player.position.x, player.position.z - basePosition.z);
+  ui.setCompassAngle(screenAngle);
+}
+
+function updateProbes(deltaTime) {
   for (let i = probes.length - 1; i >= 0; i--) {
     probes[i].update(enemies, projectiles, camera, deltaTime, obstacleColliders);
     if (probes[i].isDead) probes.splice(i, 1);
   }
+}
 
-  const healthPercent = (playerHealth / maxPlayerHealth) * 100;
+function updateHud() {
+  const healthPercent = (playerState.health / playerState.maxHealth) * 100;
   ui.setHealthPercent(healthPercent);
   const distPushed = Math.max(0, Math.floor(Math.abs(player.position.z - mapData.basePosition.z)));
   ui.setStatsText(`Dist: ${distPushed}m | Zone: ${waveManager.waveLevel}`);
+}
 
+function updateEnemies(deltaTime, enemyTargets) {
   enemyController.update(
     deltaTime,
-    isDead ? activeFriendlyBase.mesh.position : player.position,
+    playerState.isDead ? activeFriendlyBase.mesh.position : player.position,
     enemyTargets,
     projectiles
   );
+}
 
-  for (let i = yamatoEffects.length - 1; i >= 0; i--) {
-    const effect = yamatoEffects[i];
-    effect.age += deltaTime;
-    const t = effect.age / effect.duration;
+function updateYamatoEffects(deltaTime) {
+  abilities.updateYamatoEffects(deltaTime);
+}
 
-    if (t >= 1) {
-      scene.remove(effect.ring);
-      scene.remove(effect.flash);
-      effect.ring.geometry.dispose();
-      effect.ring.material.dispose();
-      effect.flash.geometry.dispose();
-      effect.flash.material.dispose();
-      yamatoEffects.splice(i, 1);
-      continue;
-    }
-
-    const ringScale = 0.25 + (t * 1.6);
-    effect.ring.scale.setScalar(ringScale);
-    effect.ring.material.opacity = 0.85 * (1 - t);
-
-    const flashScale = 1 + (t * 2.4);
-    effect.flash.scale.setScalar(flashScale);
-    effect.flash.material.opacity = 0.45 * (1 - t);
-  }
-
-  for (let i = projectiles.length - 1; i >= 0; i--) { 
+function updateProjectiles(deltaTime, playerTargets, enemyTargets) {
+  for (let i = projectiles.length - 1; i >= 0; i--) {
     const p = projectiles[i];
     if (p.isEnemy) {
       p.update(enemyTargets, null, deltaTime);
     } else {
-      p.update(playerTargets, null, deltaTime); 
+      p.update(playerTargets, null, deltaTime);
     }
-    if (p.isRemoved) projectiles.splice(i, 1); 
+    if (p.isRemoved) projectiles.splice(i, 1);
+  }
+}
+
+function updateCamera() {
+  if (playerState.isDead) return;
+
+  const zoomInAmount = CAMERA_MAX_ZOOM - gameState.cameraZoom;
+  targetCameraPos.set(
+    player.position.x,
+    (CAMERA_BASE_HEIGHT * gameState.cameraZoom) + (zoomInAmount * CAMERA_ZOOMED_IN_HEIGHT_BONUS / (CAMERA_MAX_ZOOM - CAMERA_MIN_ZOOM)),
+    player.position.z + (CAMERA_BASE_DISTANCE * gameState.cameraZoom)
+  );
+
+  if (gameState.cameraShakeTime > 0) {
+    const shakeAmount = gameState.cameraShakeStrength * (gameState.cameraShakeTime / CAMERA_SHAKE_DURATION);
+    targetCameraPos.x += (Math.random() - 0.5) * shakeAmount;
+    targetCameraPos.y += (Math.random() - 0.5) * shakeAmount * 0.65;
+    targetCameraPos.z += (Math.random() - 0.5) * shakeAmount;
   }
 
-  if (!isDead) {
-    const zoomInAmount = CAMERA_MAX_ZOOM - cameraZoom;
-    targetCameraPos.set(
-      player.position.x,
-      (CAMERA_BASE_HEIGHT * cameraZoom) + (zoomInAmount * CAMERA_ZOOMED_IN_HEIGHT_BONUS / (CAMERA_MAX_ZOOM - CAMERA_MIN_ZOOM)),
-      player.position.z + (CAMERA_BASE_DISTANCE * cameraZoom)
-    );
-    camera.position.lerp(targetCameraPos, 0.05);
-    camera.lookAt(player.position);
+  camera.position.lerp(targetCameraPos, 0.05);
+  camera.lookAt(player.position);
+}
+
+function animate() {
+  requestAnimationFrame(animate);
+
+  if (gameState.isPaused) {
+    composer.render();
+    return;
   }
+  
+  const deltaTime = clock.getDelta();
+  const time = clock.elapsedTime * 1000;
+  if (gameState.cameraShakeTime > 0) {
+    gameState.cameraShakeTime = Math.max(0, gameState.cameraShakeTime - deltaTime);
+  }
+  abilities.refreshButtons();
+  updateRockSpinners(deltaTime);
+  updateDebugOverlay(deltaTime);
+
+  if (!playerState.isDead) {
+    updatePlayerMovement(deltaTime);
+    updateBombCollisions();
+    updateShieldEffect(deltaTime, time);
+  } else {
+    updateRespawnTimer(deltaTime);
+  }
+
+  const { allBases, playerOwnedBases, playerTargets, enemyTargets } = buildCombatState(deltaTime);
+  updateCannons(time, playerTargets);
+  const isNearBase = updateBases(time, allBases, playerOwnedBases, playerTargets, enemyTargets);
+  updateBaseUiAndHealing(isNearBase, deltaTime);
+  updateProbes(deltaTime);
+  updateHud();
+  updateEnemies(deltaTime, enemyTargets);
+  updateYamatoEffects(deltaTime);
+  updateProjectiles(deltaTime, playerTargets, enemyTargets);
+  updateCamera();
   composer.render();
 }
 animate(0);
