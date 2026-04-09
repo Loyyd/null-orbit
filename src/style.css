@@ -62,24 +62,27 @@ canvas {
 }
 
 #currency-label {
-  font-size: 0.58rem;
+  font-size: 0.68rem;
   letter-spacing: 0.18em;
   text-transform: uppercase;
   color: rgba(180, 240, 255, 0.8);
 }
 
 #currency-value {
-  font-size: 1rem;
+  font-size: 1.15rem;
   font-weight: 700;
   color: #ffffff;
   letter-spacing: 0.06em;
 }
 
 /* Upgrade Menu */
+ :root {
+  --upgrade-button-size: 92px;
+}
+
 #upgrade-menu, #base-upgrade-menu {
   position: absolute;
   bottom: 20px;
-  width: 200px;
   background: rgba(0, 10, 20, 0.85);
   padding: 15px 15px 35px 15px;
   color: #fff;
@@ -91,18 +94,20 @@ canvas {
 
 #upgrade-menu {
   right: 20px;
+  width: calc((var(--upgrade-button-size) * 3) + 20px + 30px);
   border-left: 3px solid #00ffff;
 }
 
 #base-upgrade-menu {
   left: 20px;
+  width: calc((var(--upgrade-button-size) * 2) + 10px + 30px);
   border-right: 3px solid #00ff55;
   display: none;
 }
 
 #upgrade-menu h2, #base-upgrade-menu h2 {
   margin: 0 0 10px 0;
-  font-size: 0.8rem;
+  font-size: 0.92rem;
   font-weight: 300;
   letter-spacing: 2px;
   text-transform: uppercase;
@@ -118,35 +123,152 @@ canvas {
 }
 
 #stats {
-  font-size: 0.7rem;
+  font-size: 0.8rem;
   margin-bottom: 10px;
   color: rgba(255, 255, 255, 0.6);
   letter-spacing: 1px;
   width: 100%;
 }
 
+.upgrade-button-grid {
+  width: max-content;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  gap: 10px;
+  align-self: center;
+  justify-content: center;
+}
+
 #upgrade-buttons {
-  width: 100%;
+  justify-content: flex-start;
 }
 
-.upgrade-btn {
-  display: block;
-  width: 100%;
-  padding: 10px;
-  margin-bottom: 8px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(0, 255, 255, 0.2);
-  color: #fff;
+#upgrade-buttons,
+#base-upgrade-buttons,
+#module-upgrade-buttons {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: flex-start;
+}
+
+.upgrade-control {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.upgrade-icon-btn {
+  aspect-ratio: 1 / 1;
+  width: var(--upgrade-button-size);
+  height: var(--upgrade-button-size);
+  flex: 0 0 var(--upgrade-button-size);
+  padding: 0;
+  border: 1px solid rgba(0, 255, 255, 0.24);
+  background: rgba(255, 255, 255, 0.04);
   cursor: pointer;
-  font-size: 0.7rem;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  transition: all 0.2s;
+  overflow: hidden;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease, opacity 0.18s ease;
 }
 
-.upgrade-btn:hover {
-  background: rgba(0, 255, 255, 0.1);
-  border-color: #00ffff;
+.upgrade-icon-btn img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.upgrade-icon-btn:hover {
+  transform: translateY(-2px);
+  border-color: #8ef6ff;
+  box-shadow: 0 0 18px rgba(0, 255, 255, 0.24);
+}
+
+.upgrade-icon-btn:disabled,
+.upgrade-icon-btn.disabled-upgrade {
+  cursor: not-allowed;
+  opacity: 0.38;
+  border-color: rgba(180, 220, 255, 0.16);
+  box-shadow: none;
+}
+
+.upgrade-progress {
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 5px;
+  width: 8px;
+  height: var(--upgrade-button-size);
+  justify-content: space-between;
+  flex: 0 0 auto;
+}
+
+.upgrade-progress-segment {
+  width: 8px;
+  height: calc((var(--upgrade-button-size) - (5px * 5)) / 6);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.upgrade-progress-segment.available {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(160, 230, 255, 0.22);
+}
+
+.upgrade-progress-segment.filled {
+  background: linear-gradient(180deg, #78f5ff, #00b7ff);
+  border-color: rgba(180, 250, 255, 0.8);
+  box-shadow: 0 0 10px rgba(0, 210, 255, 0.35);
+}
+
+.upgrade-progress-segment.locked {
+  background: rgba(255, 170, 110, 0.12);
+  border-color: rgba(255, 170, 110, 0.16);
+}
+
+#upgrade-tooltip {
+  position: fixed;
+  transform: translate(-50%, -100%);
+  min-width: 220px;
+  max-width: 280px;
+  padding: 10px 12px;
+  background: rgba(6, 14, 24, 0.94);
+  border: 1px solid rgba(102, 217, 255, 0.3);
+  box-shadow: 0 0 24px rgba(0, 0, 0, 0.35);
+  color: #fff;
+  pointer-events: none;
+  opacity: 0;
+  z-index: 220;
+  transition: opacity 0.12s ease;
+}
+
+#upgrade-tooltip.visible {
+  opacity: 1;
+}
+
+#upgrade-tooltip-title {
+  font-size: 0.84rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #9ef8ff;
+  margin-bottom: 6px;
+}
+
+#upgrade-tooltip-description {
+  font-size: 0.78rem;
+  line-height: 1.35;
+  color: rgba(255, 255, 255, 0.86);
+  margin-bottom: 8px;
+}
+
+#upgrade-tooltip-cost {
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #ffdd9a;
 }
 
 /* Compass Style */
@@ -190,7 +312,7 @@ canvas {
 #compass-label {
   position: absolute;
   bottom: -25px;
-  font-size: 0.5rem;
+  font-size: 0.62rem;
   color: #00ffff;
   text-transform: uppercase;
   letter-spacing: 1px;
@@ -259,19 +381,19 @@ canvas {
   position: absolute;
   top: 6px;
   left: 8px;
-  font-size: 0.72rem;
+  font-size: 0.8rem;
   font-weight: 700;
   color: rgba(255, 255, 255, 0.85);
 }
 
 .module-icon {
-  font-size: 1.4rem;
+  font-size: 1.55rem;
   line-height: 1;
   letter-spacing: 0.08em;
 }
 
 .module-label {
-  font-size: 0.52rem;
+  font-size: 0.62rem;
   letter-spacing: 0.18em;
   text-transform: uppercase;
 }
@@ -291,7 +413,7 @@ canvas {
   background: rgba(0, 16, 28, 0.84);
   color: #dffcff;
   cursor: pointer;
-  font-size: 0.68rem;
+  font-size: 0.78rem;
   letter-spacing: 0.14em;
   text-transform: uppercase;
   backdrop-filter: blur(10px);
@@ -367,7 +489,7 @@ canvas {
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(0, 255, 255, 0.3);
   color: #fff;
-  font-size: 1rem;
+  font-size: 1.1rem;
   text-transform: uppercase;
   letter-spacing: 3px;
   cursor: pointer;
@@ -407,10 +529,44 @@ canvas {
   font-size: 0.8rem;
   background: rgba(0, 0, 0, 0.5);
   padding: 10px;
-  pointer-events: none;
   display: none;
   z-index: 1000;
   line-height: 1.4;
-  white-space: pre;
   border-left: 3px solid #00ff00;
+}
+
+#debug-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+#debug-title {
+  color: #9fff9f;
+  letter-spacing: 0.08em;
+}
+
+#debug-skip-wave-btn {
+  width: 22px;
+  height: 22px;
+  border: 1px solid rgba(0, 255, 120, 0.45);
+  background: rgba(0, 255, 120, 0.12);
+  color: #dfffe5;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+  line-height: 1;
+  padding: 0;
+}
+
+#debug-skip-wave-btn:hover {
+  background: rgba(0, 255, 120, 0.22);
+  border-color: rgba(120, 255, 170, 0.8);
+}
+
+#debug-body {
+  white-space: pre;
+  pointer-events: none;
 }

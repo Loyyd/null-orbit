@@ -6,12 +6,14 @@ export class WaveManager {
     this.waveOptions = gameOptions.wave || {};
     this.spawnTimer = 0;
     this.waveLevel = 1;
+    this.debugWaveOverride = null;
   }
 
   update(playerPos, enemyController, deltaTime) {
     const zoneDistance = this.waveOptions.zoneDistance ?? 80;
     const distancePush = Math.abs(playerPos.z - 20);
-    this.waveLevel = 1 + Math.floor(distancePush / zoneDistance);
+    const computedWave = 1 + Math.floor(distancePush / zoneDistance);
+    this.waveLevel = Math.max(computedWave, this.debugWaveOverride ?? 1);
 
     this.spawnTimer += deltaTime;
     const spawnThreshold = Math.max(
@@ -53,5 +55,10 @@ export class WaveManager {
       const type = isColossus ? 'colossus' : 'spark';
       enemyController.spawn(squadCenter.clone().add(offset), type, this.waveLevel);
     }
+  }
+
+  skipWave() {
+    this.debugWaveOverride = (this.debugWaveOverride ?? this.waveLevel) + 1;
+    this.waveLevel = this.debugWaveOverride;
   }
 }

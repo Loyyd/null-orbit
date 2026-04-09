@@ -58,11 +58,18 @@ const CAMERA_MIN_ZOOM = 0.2;
 const CAMERA_MAX_ZOOM = 1;
 const CAMERA_ZOOM_STEP = 0.08;
 const CAMERA_ZOOMED_IN_HEIGHT_BONUS = 5;
+const UPGRADE_COST = 10;
+const RAPID_FIRE_PRE_TIER_MAX = 3;
+const RAPID_FIRE_POST_TIER_MAX = 6;
+const ACCELERATION_PRE_TIER_MAX = 1;
+const ACCELERATION_POST_TIER_MAX = 4;
 
 const playerState = {
   acceleration: gameOptions.player.acceleration,
   rotationSpeed: gameOptions.player.rotationSpeed,
   currentTier: 1,
+  rapidFireLevel: 0,
+  accelerationUpgradeLevel: 0,
   health: gameOptions.player.maxHealth,
   maxHealth: gameOptions.player.maxHealth,
   isDead: false,
@@ -75,7 +82,7 @@ const playerState = {
     yamatoOwned: false,
     selectedModuleId: null,
   },
-  plasmaCells: 0,
+  plasmaCells: 1000,
 };
 const gameState = {
   isPaused: false,
@@ -239,6 +246,80 @@ shieldMesh.visible = false;
 player.add(shieldMesh);
 
 let abilities;
+function canAffordUpgrade(cost = UPGRADE_COST) {
+  return playerState.plasmaCells >= cost;
+}
+
+function spendPlasma(cost = UPGRADE_COST) {
+  if (!canAffordUpgrade(cost)) {
+    return false;
+  }
+  playerState.plasmaCells -= cost;
+  ui.setCurrency(playerState.plasmaCells);
+  return true;
+}
+
+function getRapidFireUnlockedMax() {
+  return playerState.currentTier >= 2 ? RAPID_FIRE_POST_TIER_MAX : RAPID_FIRE_PRE_TIER_MAX;
+}
+
+function getAccelerationUnlockedMax() {
+  return playerState.currentTier >= 2 ? ACCELERATION_POST_TIER_MAX : ACCELERATION_PRE_TIER_MAX;
+}
+
+function canUpgradeRapidFire() {
+  return playerState.rapidFireLevel < getRapidFireUnlockedMax();
+}
+
+function canUpgradeAcceleration() {
+  return playerState.accelerationUpgradeLevel < getAccelerationUnlockedMax();
+}
+
+function syncUpgradeUi() {
+  const canAfford = canAffordUpgrade();
+  ui.setUpgradeButtonDisabled('up-cannons', !canAfford || !canUpgradeRapidFire());
+  ui.setUpgradeButtonDisabled('up-speed', !canAfford || !canUpgradeAcceleration());
+  ui.setUpgradeButtonDisabled('base-up-cannons', !canAfford);
+  ui.setUpgradeButtonDisabled('base-up-spawn', !canAfford);
+  ui.setUpgradeButtonDisabled('base-up-shield', playerState.abilities.shieldOwned || !canAfford);
+  ui.setUpgradeButtonDisabled('base-up-yamato', playerState.abilities.yamatoOwned || !canAfford);
+  ui.setUpgradeButtonDisabled('up-tier2', playerState.currentTier >= 2 || !canAfford);
+
+  ui.setUpgradeProgress('up-cannons', {
+    current: playerState.rapidFireLevel,
+    total: RAPID_FIRE_POST_TIER_MAX,
+    unlocked: getRapidFireUnlockedMax(),
+  });
+  ui.setUpgradeProgress('up-speed', {
+    current: playerState.accelerationUpgradeLevel,
+    total: ACCELERATION_POST_TIER_MAX,
+    unlocked: getAccelerationUnlockedMax(),
+  });
+  ui.setUpgradeProgress('up-tier2', {
+    current: playerState.currentTier >= 2 ? 1 : 0,
+    total: 1,
+    unlocked: 1,
+  });
+  ui.setUpgradeProgress('base-up-shield', {
+    current: playerState.abilities.shieldOwned ? 1 : 0,
+    total: 1,
+    unlocked: 1,
+  });
+  ui.setUpgradeProgress('base-up-yamato', {
+    current: playerState.abilities.yamatoOwned ? 1 : 0,
+    total: 1,
+    unlocked: 1,
+  });
+
+  ui.setUpgradeButtonMeta('up-tier2', {
+    title: playerState.currentTier >= 2 ? 'Evolution: Maxed' : 'Evolution: Tier 2',
+    description: playerState.currentTier >= 2
+      ? 'The ship has already reached its strongest evolution.'
+      : 'Evolves the ship into its stronger second form.',
+    cost: UPGRADE_COST,
+  });
+}
+
 const ui = createGameUi({
   onResume: togglePause,
   onRestart: () => window.location.reload(),
@@ -248,31 +329,72 @@ const ui = createGameUi({
   onAmbientInput: (value) => {
     ambientLight.intensity = value;
   },
-  onUpgradeCannons: () => addCannons(2),
+  onDebugSkipWave: () => {
+    waveManager.skipWave();
+  },
+  onUpgradeCannons: () => {
+    if (!canUpgradeRapidFire()) return;
+    if (!spendPlasma()) return;
+    playerState.rapidFireLevel += 1;
+    upgradePlayerCannonFireRate();
+    syncUpgradeUi();
+  },
   onUpgradeSpeed: () => {
+    if (!canUpgradeAcceleration()) return;
+    if (!spendPlasma()) return;
+    playerState.accelerationUpgradeLevel += 1;
     playerState.acceleration += 0.0025;
     playerState.rotationSpeed += 0.0025;
+    syncUpgradeUi();
   },
   onUpgradeTier2: () => {
+    if (playerState.currentTier >= 2) return;
+    if (!spendPlasma()) return;
     if (playerState.currentTier < 2) {
       playerState.currentTier = 2;
       player.scale.set(1.5, 1.5, 1.5);
       setPlayerAppearance(0x00ffff, playerBaseEmissiveIntensity);
       ui.setTier2ButtonLabel('Evolution: Maxed');
     }
+    syncUpgradeUi();
   },
-  onBuyShield: () => abilities.buyShieldModule(),
-  onBuyYamato: () => abilities.buyYamatoModule(),
-  onBaseUpgradeCannons: () => activeFriendlyBase.addCannon(),
-  onBaseUpgradeSpawn: () => activeFriendlyBase.upgradeSpawnRate(),
+  onBuyShield: () => {
+    if (playerState.abilities.shieldOwned) return;
+    if (!spendPlasma()) return;
+    abilities.buyShieldModule();
+    syncUpgradeUi();
+  },
+  onBuyYamato: () => {
+    if (playerState.abilities.yamatoOwned) return;
+    if (!spendPlasma()) return;
+    abilities.buyYamatoModule();
+    syncUpgradeUi();
+  },
+  onBaseUpgradeCannons: () => {
+    if (!spendPlasma()) return;
+    activeFriendlyBase.addCannon();
+    syncUpgradeUi();
+  },
+  onBaseUpgradeSpawn: () => {
+    if (!spendPlasma()) return;
+    activeFriendlyBase.upgradeSpawnRate();
+    syncUpgradeUi();
+  },
 });
 ui.setCurrency(playerState.plasmaCells);
+syncUpgradeUi();
 
 function getAbilityTargets() {
   return [...enemies, ...(enemyBase.owner === 'enemy' ? [enemyBase] : [])];
 }
 
 const cannons = [];
+function upgradePlayerCannonFireRate() {
+  for (const cannon of cannons) {
+    cannon.fireRate = Math.max(250, cannon.fireRate * 0.82);
+  }
+}
+
 function addCannons(count) {
   const pairs = Math.max(1, Math.floor(count / 2));
   for (let i = 0; i < pairs; i++) {
@@ -380,6 +502,7 @@ const enemyController = new FlowFieldUnitController(scene, occupancyMap, navigat
   onEnemyDestroyed: () => {
     playerState.plasmaCells += 10;
     ui.setCurrency(playerState.plasmaCells);
+    syncUpgradeUi();
   },
 });
 
@@ -696,7 +819,7 @@ function updateBaseUiAndHealing(isNearBase, deltaTime) {
 
 function updateProbes(deltaTime) {
   for (let i = probes.length - 1; i >= 0; i--) {
-    probes[i].update(enemies, projectiles, camera, deltaTime, obstacleColliders);
+    probes[i].update(enemies, projectiles, camera, deltaTime, []);
     if (probes[i].isDead) probes.splice(i, 1);
   }
 }

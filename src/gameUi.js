@@ -1,10 +1,16 @@
 import plasmaCellIcon from './assets/plasma_cell.png';
+import cannonButtonIcon from './assets/buttons/button_cannon.png';
+import shieldButtonIcon from './assets/buttons/button_shield.png';
+import speedButtonIcon from './assets/buttons/button_speed.png';
+import tierButtonIcon from './assets/buttons/button_tier.png';
+import yamatoButtonIcon from './assets/buttons/button_yamato.png';
 
 export function createGameUi({
   onResume,
   onRestart,
   onBloomInput,
   onAmbientInput,
+  onDebugSkipWave,
   onUpgradeCannons,
   onUpgradeSpeed,
   onUpgradeTier2,
@@ -13,6 +19,75 @@ export function createGameUi({
   onBaseUpgradeCannons,
   onBaseUpgradeSpawn,
 }) {
+  const upgradeButtonConfigs = {
+    'up-cannons': {
+      title: 'Rapid Fire',
+      description: 'Makes the ship cannon pair shoot faster.',
+      cost: 10,
+      icon: cannonButtonIcon,
+    },
+    'up-speed': {
+      title: 'Thruster Boost',
+      description: 'Improves acceleration and turning speed.',
+      cost: 10,
+      icon: speedButtonIcon,
+    },
+    'up-tier2': {
+      title: 'Evolution: Tier 2',
+      description: 'Evolves the ship into its stronger second form.',
+      cost: 10,
+      icon: tierButtonIcon,
+    },
+    'base-up-cannons': {
+      title: 'Base Cannons',
+      description: 'Adds one more cannon to the active friendly base.',
+      cost: 10,
+      icon: cannonButtonIcon,
+    },
+    'base-up-spawn': {
+      title: 'Spawn Rate',
+      description: 'Makes the active friendly base deploy probes faster.',
+      cost: 10,
+      icon: speedButtonIcon,
+    },
+    'base-up-shield': {
+      title: 'Shield Module',
+      description: 'Unlocks the shield ability for your ship.',
+      cost: 10,
+      icon: shieldButtonIcon,
+    },
+    'base-up-yamato': {
+      title: 'Yamato Cannon',
+      description: 'Unlocks the Yamato strike ability.',
+      cost: 10,
+      icon: yamatoButtonIcon,
+    },
+  };
+
+  function createUpgradeButton(id) {
+    const config = upgradeButtonConfigs[id];
+    const wrapper = document.createElement('div');
+    wrapper.className = 'upgrade-control';
+
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'upgrade-icon-btn';
+    button.dataset.upgradeId = id;
+    button.dataset.title = config.title;
+    button.dataset.description = config.description;
+    button.dataset.cost = `${config.cost}`;
+    button.setAttribute('aria-label', config.title);
+    button.innerHTML = `<img src="${config.icon}" alt="${config.title}">`;
+
+    const progress = document.createElement('div');
+    progress.className = 'upgrade-progress';
+    progress.dataset.upgradeId = id;
+
+    wrapper.appendChild(button);
+    wrapper.appendChild(progress);
+    return { wrapper, button, progress };
+  }
+
   const healthContainer = document.createElement('div');
   healthContainer.id = 'health-container';
   const healthBar = document.createElement('div');
@@ -36,10 +111,7 @@ export function createGameUi({
   upgradeMenu.innerHTML = `
     <h2>Ship Menu</h2>
     <div id="stats">Dist: 0m</div>
-    <div id="upgrade-buttons">
-      <button id="up-cannons" class="upgrade-btn">Add Cannons (+2)</button>
-      <button id="up-speed" class="upgrade-btn">Upgrade Speed</button>
-      <button id="up-tier2" class="upgrade-btn">Evolution: Tier 2</button>
+    <div id="upgrade-buttons" class="upgrade-button-grid">
     </div>
     <div id="compass-container" style="display: none;">
       <div id="base-arrow"></div>
@@ -52,14 +124,10 @@ export function createGameUi({
   baseUpgradeMenu.id = 'base-upgrade-menu';
   baseUpgradeMenu.innerHTML = `
     <h2>Base Upgrades</h2>
-    <div id="base-upgrade-buttons">
-      <button id="base-up-cannons" class="upgrade-btn">Add Base Cannons (+1)</button>
-      <button id="base-up-spawn" class="upgrade-btn">Upgrade Spawn Rate</button>
+    <div id="base-upgrade-buttons" class="upgrade-button-grid">
     </div>
     <h2>Module Upgrades</h2>
-    <div id="module-upgrade-buttons">
-      <button id="base-up-shield" class="upgrade-btn">Buy Shield Module</button>
-      <button id="base-up-yamato" class="upgrade-btn">Buy Yamato Cannon</button>
+    <div id="module-upgrade-buttons" class="upgrade-button-grid">
     </div>
   `;
   document.body.appendChild(baseUpgradeMenu);
@@ -105,6 +173,13 @@ export function createGameUi({
 
   const debugInfo = document.createElement('div');
   debugInfo.id = 'debug-info';
+  debugInfo.innerHTML = `
+    <div id="debug-header">
+      <div id="debug-title">DEBUG MODE</div>
+      <button type="button" id="debug-skip-wave-btn" aria-label="Skip to next wave">+</button>
+    </div>
+    <div id="debug-body"></div>
+  `;
   document.body.appendChild(debugInfo);
 
   const debugQuicklinks = document.createElement('div');
@@ -119,20 +194,73 @@ export function createGameUi({
   damageOverlay.id = 'damage-overlay';
   document.body.appendChild(damageOverlay);
 
+  const upgradeTooltip = document.createElement('div');
+  upgradeTooltip.id = 'upgrade-tooltip';
+  upgradeTooltip.innerHTML = `
+    <div id="upgrade-tooltip-title"></div>
+    <div id="upgrade-tooltip-description"></div>
+    <div id="upgrade-tooltip-cost"></div>
+  `;
+  document.body.appendChild(upgradeTooltip);
+
+  const shipUpgradeButtons = ['up-cannons', 'up-speed', 'up-tier2'].map(createUpgradeButton);
+  const baseUpgradeButtons = ['base-up-cannons', 'base-up-spawn'].map(createUpgradeButton);
+  const moduleUpgradeButtons = ['base-up-shield', 'base-up-yamato'].map(createUpgradeButton);
+  shipUpgradeButtons.forEach(({ wrapper }) => upgradeMenu.querySelector('#upgrade-buttons').appendChild(wrapper));
+  baseUpgradeButtons.forEach(({ wrapper }) => baseUpgradeMenu.querySelector('#base-upgrade-buttons').appendChild(wrapper));
+  moduleUpgradeButtons.forEach(({ wrapper }) => baseUpgradeMenu.querySelector('#module-upgrade-buttons').appendChild(wrapper));
+
+  const upgradeButtonsById = Object.fromEntries(
+    [...shipUpgradeButtons, ...baseUpgradeButtons, ...moduleUpgradeButtons].map(({ button, progress }) => [
+      button.dataset.upgradeId,
+      { button, progress },
+    ])
+  );
+
   const elements = {
+    upgradeMenu,
+    baseUpgradeMenu,
     stats: upgradeMenu.querySelector('#stats'),
     upgradeButtons: upgradeMenu.querySelector('#upgrade-buttons'),
-    tier2Button: upgradeMenu.querySelector('#up-tier2'),
     compassContainer: upgradeMenu.querySelector('#compass-container'),
     baseArrow: upgradeMenu.querySelector('#base-arrow'),
-    shieldUpgradeButton: baseUpgradeMenu.querySelector('#base-up-shield'),
-    yamatoUpgradeButton: baseUpgradeMenu.querySelector('#base-up-yamato'),
     mainMenuContent: escMenu.querySelector('#main-menu-content'),
     optionsMenu: escMenu.querySelector('#options-menu'),
     debugEditorLink: debugQuicklinks.querySelector('#debug-editor-link'),
     debugOptionsLink: debugQuicklinks.querySelector('#debug-options-link'),
     currencyValue: currencyBar.querySelector('#currency-value'),
+    tooltipTitle: upgradeTooltip.querySelector('#upgrade-tooltip-title'),
+    tooltipDescription: upgradeTooltip.querySelector('#upgrade-tooltip-description'),
+    tooltipCost: upgradeTooltip.querySelector('#upgrade-tooltip-cost'),
+    debugSkipWaveButton: debugInfo.querySelector('#debug-skip-wave-btn'),
+    debugBody: debugInfo.querySelector('#debug-body'),
   };
+
+  function positionTooltip(target) {
+    const anchor = target.closest('#base-upgrade-menu') || target.closest('#upgrade-menu') || target;
+    const rect = anchor.getBoundingClientRect();
+    upgradeTooltip.style.left = `${rect.left + (rect.width / 2)}px`;
+    upgradeTooltip.style.top = `${rect.top - 14}px`;
+  }
+
+  function showUpgradeTooltip(target) {
+    elements.tooltipTitle.innerText = target.dataset.title;
+    elements.tooltipDescription.innerText = target.dataset.description;
+    elements.tooltipCost.innerText = `Cost: ${target.dataset.cost} plasma cells`;
+    positionTooltip(target);
+    upgradeTooltip.classList.add('visible');
+  }
+
+  function hideUpgradeTooltip() {
+    upgradeTooltip.classList.remove('visible');
+  }
+
+  Object.values(upgradeButtonsById).forEach(({ button }) => {
+    button.addEventListener('mouseenter', () => showUpgradeTooltip(button));
+    button.addEventListener('mouseleave', hideUpgradeTooltip);
+    button.addEventListener('focus', () => showUpgradeTooltip(button));
+    button.addEventListener('blur', hideUpgradeTooltip);
+  });
 
   function showPauseMainMenu() {
     elements.optionsMenu.style.display = 'none';
@@ -149,15 +277,16 @@ export function createGameUi({
   escMenu.querySelector('#bloom-range').oninput = (event) => onBloomInput(parseFloat(event.target.value));
   escMenu.querySelector('#ambient-range').oninput = (event) => onAmbientInput(parseFloat(event.target.value));
 
-  upgradeMenu.querySelector('#up-cannons').onclick = onUpgradeCannons;
-  upgradeMenu.querySelector('#up-speed').onclick = onUpgradeSpeed;
-  elements.tier2Button.onclick = onUpgradeTier2;
-  elements.shieldUpgradeButton.onclick = onBuyShield;
-  elements.yamatoUpgradeButton.onclick = onBuyYamato;
-  baseUpgradeMenu.querySelector('#base-up-cannons').onclick = onBaseUpgradeCannons;
-  baseUpgradeMenu.querySelector('#base-up-spawn').onclick = onBaseUpgradeSpawn;
+  upgradeButtonsById['up-cannons'].button.onclick = onUpgradeCannons;
+  upgradeButtonsById['up-speed'].button.onclick = onUpgradeSpeed;
+  upgradeButtonsById['up-tier2'].button.onclick = onUpgradeTier2;
+  upgradeButtonsById['base-up-shield'].button.onclick = onBuyShield;
+  upgradeButtonsById['base-up-yamato'].button.onclick = onBuyYamato;
+  upgradeButtonsById['base-up-cannons'].button.onclick = onBaseUpgradeCannons;
+  upgradeButtonsById['base-up-spawn'].button.onclick = onBaseUpgradeSpawn;
   elements.debugEditorLink.onclick = () => window.open('/editor.html', '_blank', 'noopener,noreferrer');
   elements.debugOptionsLink.onclick = () => window.open('/options.html', '_blank', 'noopener,noreferrer');
+  elements.debugSkipWaveButton.onclick = onDebugSkipWave;
 
   return {
     moduleBar,
@@ -172,6 +301,42 @@ export function createGameUi({
     },
     setCurrency(amount) {
       elements.currencyValue.innerText = `${amount}`;
+    },
+    setUpgradeButtonDisabled(id, disabled) {
+      upgradeButtonsById[id].button.disabled = disabled;
+      upgradeButtonsById[id].button.classList.toggle('disabled-upgrade', disabled);
+    },
+    setUpgradeButtonHidden(id, hidden) {
+      upgradeButtonsById[id].button.closest('.upgrade-control').style.display = hidden ? 'none' : '';
+    },
+    setUpgradeButtonMeta(id, { title, description, cost }) {
+      const button = upgradeButtonsById[id].button;
+      if (title !== undefined) {
+        button.dataset.title = title;
+        button.setAttribute('aria-label', title);
+      }
+      if (description !== undefined) {
+        button.dataset.description = description;
+      }
+      if (cost !== undefined) {
+        button.dataset.cost = `${cost}`;
+      }
+    },
+    setUpgradeProgress(id, { current, total, unlocked = total }) {
+      const progress = upgradeButtonsById[id].progress;
+      progress.replaceChildren();
+      progress.style.display = total > 0 ? 'flex' : 'none';
+
+      for (let index = 0; index < total; index++) {
+        const segment = document.createElement('span');
+        segment.className = 'upgrade-progress-segment';
+        if (index < unlocked) {
+          segment.classList.add(index < current ? 'filled' : 'available');
+        } else {
+          segment.classList.add('locked');
+        }
+        progress.appendChild(segment);
+      }
     },
     setStatsText(text) {
       elements.stats.innerText = text;
@@ -195,7 +360,7 @@ export function createGameUi({
       debugQuicklinks.style.display = visible ? 'flex' : 'none';
     },
     setDebugText(text) {
-      debugInfo.innerText = text;
+      elements.debugBody.innerText = text;
     },
     flashDamage() {
       damageOverlay.classList.remove('active');
@@ -204,13 +369,14 @@ export function createGameUi({
       damageOverlay.classList.add('active');
     },
     setTier2ButtonLabel(text) {
-      elements.tier2Button.innerText = text;
+      upgradeButtonsById['up-tier2'].button.dataset.title = text;
+      upgradeButtonsById['up-tier2'].button.setAttribute('aria-label', text);
     },
     hideShieldUpgrade() {
-      elements.shieldUpgradeButton.style.display = 'none';
+      this.setUpgradeButtonHidden('base-up-shield', true);
     },
     hideYamatoUpgrade() {
-      elements.yamatoUpgradeButton.style.display = 'none';
+      this.setUpgradeButtonHidden('base-up-yamato', true);
     },
   };
 }
