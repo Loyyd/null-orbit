@@ -1,5 +1,27 @@
 import * as THREE from 'three';
 
+let glowTexture = null;
+
+function getGlowTexture() {
+  if (glowTexture) return glowTexture;
+
+  const size = 128;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  const gradient = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+  gradient.addColorStop(0, 'rgba(255,255,255,1)');
+  gradient.addColorStop(0.25, 'rgba(255,255,255,0.55)');
+  gradient.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, size, size);
+
+  glowTexture = new THREE.CanvasTexture(canvas);
+  glowTexture.colorSpace = THREE.SRGBColorSpace;
+  return glowTexture;
+}
+
 function createFaceTransform(boxSize, faceIndex) {
   const transform = {
     position: new THREE.Vector3(),
@@ -46,7 +68,7 @@ function createShardMaterial(color) {
   return new THREE.MeshBasicMaterial({
     color,
     transparent: true,
-    opacity: 0.95,
+    opacity: 0.88,
     side: THREE.DoubleSide,
     depthWrite: false,
   });
@@ -59,15 +81,28 @@ export function createShatterEffectSystem(scene) {
 
   function spawn(position, {
     size = 2,
-    color = 0xff8855,
+    color = 0x7d3a3f,
     segmentCount = 3,
-    duration = 0.7,
-    spread = 8,
-    lift = 2.5,
+    duration = 0.95,
+    spread = 5.5,
+    lift = 1.15,
   } = {}) {
     const group = new THREE.Group();
     group.position.copy(position);
     scene.add(group);
+
+    const flashMaterial = new THREE.SpriteMaterial({
+      map: getGlowTexture(),
+      color,
+      transparent: true,
+      opacity: 0.5,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    flashMaterial.toneMapped = false;
+    const flash = new THREE.Sprite(flashMaterial);
+    flash.scale.setScalar(size * 1.5);
+    group.add(flash);
 
     const planeSize = size / segmentCount;
     const boxSize = planeSize * segmentCount;
@@ -82,7 +117,7 @@ export function createShatterEffectSystem(scene) {
           const localY = ((row + 0.5) - (segmentCount * 0.5)) * planeSize;
 
           const shard = new THREE.Mesh(
-            new THREE.PlaneGeometry(planeSize * 0.92, planeSize * 0.92),
+            new THREE.PlaneGeometry(planeSize * 0.62, planeSize * 0.62),
             createShardMaterial(color)
           );
           shard.position.set(localX, localY, 0).add(faceTransform.position);
@@ -90,20 +125,20 @@ export function createShatterEffectSystem(scene) {
           group.add(shard);
 
           randomDirection.set(
-            (Math.random() - 0.5) * 0.7,
-            Math.random() * 0.5 + 0.1,
-            (Math.random() - 0.5) * 0.7,
+            (Math.random() - 0.5) * 0.45,
+            Math.random() * 0.28 + 0.05,
+            (Math.random() - 0.5) * 0.45,
           ).normalize();
 
-          worldDirection.copy(faceTransform.normal).multiplyScalar(1.25).add(randomDirection).normalize();
+          worldDirection.copy(faceTransform.normal).multiplyScalar(0.72).add(randomDirection).normalize();
 
           shards.push({
             mesh: shard,
-            velocity: worldDirection.clone().multiplyScalar(spread * (0.55 + Math.random() * 0.7)).add(new THREE.Vector3(0, lift * Math.random(), 0)),
+            velocity: worldDirection.clone().multiplyScalar(spread * (0.45 + Math.random() * 0.45)).add(new THREE.Vector3(0, lift * Math.random(), 0)),
             spin: new THREE.Vector3(
-              (Math.random() - 0.5) * 14,
-              (Math.random() - 0.5) * 14,
-              (Math.random() - 0.5) * 14,
+              (Math.random() - 0.5) * 7,
+              (Math.random() - 0.5) * 7,
+              (Math.random() - 0.5) * 7,
             ),
           });
         }
@@ -112,6 +147,7 @@ export function createShatterEffectSystem(scene) {
 
     activeEffects.push({
       group,
+      flash,
       shards,
       age: 0,
       duration,
@@ -125,6 +161,7 @@ export function createShatterEffectSystem(scene) {
       const t = effect.age / effect.duration;
 
       if (t >= 1) {
+        effect.flash.material.dispose();
         for (const shard of effect.shards) {
           shard.mesh.geometry.dispose();
           shard.mesh.material.dispose();
@@ -135,15 +172,22 @@ export function createShatterEffectSystem(scene) {
       }
 
       const opacity = 1 - t;
+      if (effect.flash) {
+        const flashOpacity = 0.42 * Math.pow(1 - t, 1.4);
+        const flashScale = 1 + (t * 2.6);
+        effect.flash.material.opacity = flashOpacity;
+        effect.flash.scale.setScalar(flashScale * 1.6);
+      }
 
       for (const shard of effect.shards) {
         shard.mesh.position.addScaledVector(shard.velocity, deltaTime);
-        shard.velocity.y -= 9.5 * deltaTime * 0.45;
+        shard.velocity.multiplyScalar(0.992);
+        shard.velocity.y -= 9.5 * deltaTime * 0.08;
         shard.mesh.rotation.x += shard.spin.x * deltaTime;
         shard.mesh.rotation.y += shard.spin.y * deltaTime;
         shard.mesh.rotation.z += shard.spin.z * deltaTime;
         shard.mesh.material.opacity = opacity;
-        const scale = 1 - (t * 0.28);
+        const scale = 1 - (t * 0.18);
         shard.mesh.scale.setScalar(scale);
       }
     }

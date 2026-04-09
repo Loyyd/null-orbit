@@ -36,6 +36,14 @@ function forEachObjectMaterial(root, callback) {
   });
 }
 
+function setObjectShadows(root, castShadow = true, receiveShadow = true) {
+  root.traverse((child) => {
+    if (!child.isMesh) return;
+    child.castShadow = castShadow;
+    child.receiveShadow = receiveShadow;
+  });
+}
+
 export class BaseStation {
   constructor(scene, position, owner = 'player', gameOptions = {}) {
     this.scene = scene;
@@ -57,19 +65,26 @@ export class BaseStation {
     this.baseEmissiveIntensity = 1;
     this.debugVisible = false;
     this.baseModel = null;
+    this.accentLight = new THREE.PointLight(0x77d9ff, 2.2, 34, 2);
+    this.accentLight.position.set(0, 7.5, 0);
 
     this.material = new THREE.MeshStandardMaterial();
     this.mesh = new THREE.Group();
     this.mesh.position.copy(position);
     scene.add(this.mesh);
+    this.mesh.add(this.accentLight);
 
     this.visualRoot = new THREE.Group();
     this.mesh.add(this.visualRoot);
 
     this.fallbackBody = new THREE.Mesh(new THREE.CylinderGeometry(5, 7, 3, 32), this.material);
+    this.fallbackBody.castShadow = true;
+    this.fallbackBody.receiveShadow = true;
     this.mesh.add(this.fallbackBody);
     this.fallbackTower = new THREE.Mesh(new THREE.CylinderGeometry(2, 2, 8, 16), this.material);
     this.fallbackTower.position.y = 4;
+    this.fallbackTower.castShadow = true;
+    this.fallbackTower.receiveShadow = true;
     this.mesh.add(this.fallbackTower);
 
     this.loadBaseModel();
@@ -105,7 +120,7 @@ export class BaseStation {
     const hpBgMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.55 });
     this.hpBg = new THREE.Mesh(hpBgGeo, hpBgMat);
     const hpFgGeo = new THREE.PlaneGeometry(8, 0.5);
-    this.hpFgMat = new THREE.MeshBasicMaterial();
+    this.hpFgMat = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.78 });
     this.hpFg = new THREE.Mesh(hpFgGeo, this.hpFgMat);
     this.hpFg.position.z = 0.02;
     this.healthBarGroup.add(this.hpBg);
@@ -147,16 +162,22 @@ export class BaseStation {
     this.material.emissiveIntensity = this.baseEmissiveIntensity;
     if (this.baseModel) {
       forEachObjectMaterial(this.baseModel, (material) => {
+        material.emissive?.setHex?.(config.bodyColor);
         if (material.emissiveIntensity !== undefined) {
-          material.emissiveIntensity = this.baseEmissiveIntensity * 0.35;
+          material.emissiveIntensity = this.baseEmissiveIntensity * 0.62;
         }
+        if ('roughness' in material) material.roughness = Math.min(material.roughness ?? 1, 0.74);
+        if ('metalness' in material) material.metalness = Math.max(material.metalness ?? 0, 0.12);
       });
     }
+    this.accentLight.color.setHex(config.projectileColor);
+    this.accentLight.intensity = this.owner === 'player' ? 2.4 : 2.1;
     this.fireRangeMesh.material.color.setHex(config.fireRangeColor);
     this.interactionRangeMesh.material.color.setHex(config.interactionColor);
     this.beamMat.color.setHex(config.healingColor);
     this.beamMat.emissive.setHex(config.healingColor);
     this.hpFg.material.color.setHex(config.healthColor);
+    this.hpFg.material.opacity = 0.78;
   }
 
   loadBaseModel() {
@@ -165,6 +186,7 @@ export class BaseStation {
       (gltf) => {
         this.baseModel = gltf.scene;
         this.fitBaseModel(this.baseModel);
+        setObjectShadows(this.baseModel, true, true);
         this.visualRoot.add(this.baseModel);
         this.fallbackBody.visible = false;
         this.fallbackTower.visible = false;
@@ -220,6 +242,8 @@ export class BaseStation {
 
     const cannon = new THREE.Mesh(this.cannonGeo, this.cannonMat);
     cannon.position.set(0, 0, 0.7);
+    cannon.castShadow = true;
+    cannon.receiveShadow = true;
     pivot.add(cannon);
 
     pivot.lookAt(new THREE.Vector3(x * 2, 0, z * 2).add(this.position));

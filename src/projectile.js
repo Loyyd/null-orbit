@@ -12,8 +12,21 @@ export class Projectile {
     
     this.geometry = new THREE.CapsuleGeometry(0.1, 0.8, 4, 8);
     this.material = new THREE.MeshBasicMaterial({ color: color });
+    this.material.toneMapped = false;
     
     this.mesh = new THREE.Mesh(this.geometry, this.material);
+    this.glowGeometry = new THREE.CapsuleGeometry(0.22, 1.2, 4, 8);
+    this.glowMaterial = new THREE.MeshBasicMaterial({
+      color,
+      transparent: true,
+      opacity: isEnemy ? 0.32 : 0.4,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    this.glowMaterial.toneMapped = false;
+    this.glowMesh = new THREE.Mesh(this.glowGeometry, this.glowMaterial);
+    this.glowMesh.renderOrder = 2;
+    this.mesh.add(this.glowMesh);
     this.mesh.position.copy(spawnPosition);
     this.mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction.clone().normalize());
     
@@ -50,6 +63,8 @@ export class Projectile {
   remove() {
     this.isRemoved = true;
     this.scene.remove(this.mesh);
+    this.glowGeometry.dispose();
+    this.glowMaterial.dispose();
     this.geometry.dispose();
     this.material.dispose();
   }

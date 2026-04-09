@@ -25,6 +25,29 @@ const UNIT_TYPES = {
     projectileColor: 0xaa00ff,
     hitRadius: 2.2,
   },
+  miniColossus: {
+    scale: 1.65,
+    baseColor: 0x9f4960,
+    speed: 0.026,
+    maxHealth: 20,
+    aggroRange: 38,
+    shootInterval: 5400,
+    damagePerShot: 12,
+    projectileColor: 0xcc4466,
+    hitRadius: 1.55,
+  },
+  starship: {
+    scale: 5.2,
+    baseColor: 0xa23535,
+    speed: 0.008,
+    maxHealth: 400,
+    aggroRange: 60,
+    shootInterval: 5200,
+    damagePerShot: 18,
+    projectileColor: 0xff5555,
+    hitRadius: 4.4,
+    spawnInterval: 10000,
+  },
 };
 
 function isFiniteNumber(value) {
@@ -70,6 +93,18 @@ export class FlowFieldUnitController {
         shootInterval: this.enemyConfig.colossusShootInterval ?? this.enemyConfig.pulsarShootInterval ?? UNIT_TYPES.colossus.shootInterval,
         damagePerShot: this.enemyConfig.colossusDamage ?? this.enemyConfig.pulsarDamage ?? UNIT_TYPES.colossus.damagePerShot,
       },
+      miniColossus: {
+        ...UNIT_TYPES.miniColossus,
+      },
+      starship: {
+        ...UNIT_TYPES.starship,
+        speed: this.enemyConfig.starshipSpeed ?? UNIT_TYPES.starship.speed,
+        maxHealth: this.enemyConfig.starshipHealthBase ?? UNIT_TYPES.starship.maxHealth,
+        aggroRange: this.enemyConfig.starshipAggroRange ?? UNIT_TYPES.starship.aggroRange,
+        shootInterval: this.enemyConfig.starshipShootInterval ?? UNIT_TYPES.starship.shootInterval,
+        damagePerShot: this.enemyConfig.starshipDamage ?? UNIT_TYPES.starship.damagePerShot,
+        spawnInterval: this.enemyConfig.starshipSpawnInterval ?? UNIT_TYPES.starship.spawnInterval,
+      },
     };
     this.maxUnits = options.maxUnits || 1024;
     this.count = 0;
@@ -98,6 +133,7 @@ export class FlowFieldUnitController {
     this.damagePerShot = new Float32Array(this.maxUnits);
     this.scale = new Float32Array(this.maxUnits);
     this.typeId = new Uint8Array(this.maxUnits);
+    this.lastSpawnTime = new Float64Array(this.maxUnits);
     this.next = new Int32Array(this.maxUnits);
     this.cellHeads = new Int32Array(grid.width * grid.height);
     this.cellHeads.fill(-1);
@@ -118,6 +154,7 @@ export class FlowFieldUnitController {
     this.modelRenderers = {
       spark: null,
       colossus: null,
+      starship: null,
     };
     this.loadedModelRendererCount = 0;
 
@@ -143,6 +180,18 @@ export class FlowFieldUnitController {
       this.onModelRendererReady();
     }).catch((error) => {
       console.error('Failed to create colossus instanced renderer:', error);
+    });
+
+    createSharedModelInstancedRenderer(scene, this.maxUnits, {
+      targetWidth: 5.6,
+      targetHeight: 2.4,
+      targetLength: 7.5,
+      rotationY: -Math.PI / 2,
+    }, '/models/starship.glb').then((renderer) => {
+      this.modelRenderers.starship = renderer;
+      this.onModelRendererReady();
+    }).catch((error) => {
+      console.error('Failed to create starship instanced renderer:', error);
     });
 
     this.dummy = new THREE.Object3D();
@@ -172,19 +221,33 @@ export class FlowFieldUnitController {
     const sparkHealthWaveDivisor = this.enemyConfig.sparkHealthWaveDivisor ?? 3;
     const pulsarHealthBase = this.enemyConfig.pulsarHealthBase ?? 15;
     const pulsarHealthPerWave = this.enemyConfig.pulsarHealthPerWave ?? 2;
+    const starshipHealthBase = this.enemyConfig.starshipHealthBase ?? UNIT_TYPES.starship.maxHealth;
 
-    this.speed[index] = config.speed + (type === 'spark' ? waveLevel * sparkSpeedPerWave : 0);
+    this.speed[index] = normalizedType === 'spark'
+      ? config.speed + (waveLevel * sparkSpeedPerWave)
+      : config.speed;
     this.maxHealth[index] = normalizedType === 'spark'
       ? sparkHealthBase + Math.floor(waveLevel / sparkHealthWaveDivisor)
-      : pulsarHealthBase + (waveLevel * pulsarHealthPerWave);
+      : normalizedType === 'starship'
+        ? starshipHealthBase
+        : normalizedType === 'miniColossus'
+          ? config.maxHealth
+          : pulsarHealthBase + (waveLevel * pulsarHealthPerWave);
     this.health[index] = this.maxHealth[index];
     this.hitRadius[index] = config.hitRadius;
     this.aggroRange[index] = config.aggroRange;
     this.shootInterval[index] = config.shootInterval;
     this.lastShotTime[index] = 0;
+    this.lastSpawnTime[index] = performance.now();
     this.damagePerShot[index] = config.damagePerShot;
     this.scale[index] = config.scale;
-    this.typeId[index] = normalizedType === 'colossus' ? 1 : 0;
+    this.typeId[index] = normalizedType === 'colossus'
+      ? 1
+      : normalizedType === 'starship'
+        ? 2
+        : normalizedType === 'miniColossus'
+          ? 3
+          : 0;
 
     const proxy = createTargetProxy(this, index, normalizedType);
     proxy.hitRadius = this.hitRadius[index];
@@ -234,6 +297,7 @@ export class FlowFieldUnitController {
       this.damagePerShot[index] = this.damagePerShot[lastIndex];
       this.scale[index] = this.scale[lastIndex];
       this.typeId[index] = this.typeId[lastIndex];
+      this.lastSpawnTime[index] = this.lastSpawnTime[lastIndex];
 
       const movedProxy = this.targets[lastIndex];
       this.targets[index] = movedProxy;
@@ -247,7 +311,13 @@ export class FlowFieldUnitController {
     this.count--;
     if (reason === 'destroyed') {
       this.onEnemyDestroyed?.({
-        type: removedTypeId === 1 ? 'colossus' : 'spark',
+        type: removedTypeId === 3
+          ? 'miniColossus'
+          : removedTypeId === 2
+            ? 'starship'
+            : removedTypeId === 1
+              ? 'colossus'
+              : 'spark',
         position: removedPosition,
       });
     }
@@ -348,20 +418,12 @@ export class FlowFieldUnitController {
         nearestTarget &&
         currentTime - this.lastShotTime[index] >= this.shootInterval[index]
       ) {
-        this.projectilePosition.set(this.posX[index], 0, this.posZ[index]);
-        this.spawnPosition.copy(nearestTarget.mesh.position).sub(this.projectilePosition).normalize();
-        projectiles.push(
-          new Projectile(
-            this.scene,
-            this.projectilePosition,
-            this.spawnPosition,
-            this.unitTypes[this.typeId[index] === 1 ? 'colossus' : 'spark'].projectileColor,
-            true,
-            this.damagePerShot[index],
-            this.aggroRange[index] * 2
-          )
-        );
+        this.spawnProjectilesForUnit(index, nearestTarget, projectiles);
         this.lastShotTime[index] = currentTime;
+      }
+
+      if (this.typeId[index] === 2) {
+        this.maybeSpawnStarshipEscort(index, currentTime);
       }
     }
 
@@ -381,6 +443,9 @@ export class FlowFieldUnitController {
     }
     if (this.modelRenderers.colossus) {
       this.modelRenderers.colossus.dispose();
+    }
+    if (this.modelRenderers.starship) {
+      this.modelRenderers.starship.dispose();
     }
     if (this.hasModelRenderers()) {
       return;
@@ -509,16 +574,20 @@ export class FlowFieldUnitController {
 
   syncInstanceAt(index) {
     if (this.hasModelRenderers()) {
-      const rendererKey = this.typeId[index] === 1 ? 'colossus' : 'spark';
-      const otherRendererKey = rendererKey === 'spark' ? 'colossus' : 'spark';
-      this.modelRenderers[rendererKey]?.setInstanceTransform(
-        index,
-        this.posX[index],
-        this.posZ[index],
-        this.yaw[index],
-        this.scale[index]
-      );
-      this.modelRenderers[otherRendererKey]?.hideInstance(index);
+      const rendererKey = this.getRendererKeyForIndex(index);
+      ['spark', 'colossus', 'starship'].forEach((key) => {
+        if (key === rendererKey) {
+          this.modelRenderers[key]?.setInstanceTransform(
+            index,
+            this.posX[index],
+            this.posZ[index],
+            this.yaw[index],
+            this.scale[index]
+          );
+        } else {
+          this.modelRenderers[key]?.hideInstance(index);
+        }
+      });
       return;
     }
 
@@ -530,7 +599,7 @@ export class FlowFieldUnitController {
   }
 
   hasModelRenderers() {
-    return Boolean(this.modelRenderers.spark && this.modelRenderers.colossus);
+    return Boolean(this.modelRenderers.spark && this.modelRenderers.colossus && this.modelRenderers.starship);
   }
 
   onModelRendererReady() {
@@ -552,15 +621,95 @@ export class FlowFieldUnitController {
   updateRendererCounts() {
     this.modelRenderers.spark?.setCount(this.count);
     this.modelRenderers.colossus?.setCount(this.count);
+    this.modelRenderers.starship?.setCount(this.count);
   }
 
   flushModelRenderers() {
     this.modelRenderers.spark?.flush();
     this.modelRenderers.colossus?.flush();
+    this.modelRenderers.starship?.flush();
   }
 
   hideAllModelRenderersAt(index) {
     this.modelRenderers.spark?.hideInstance(index);
     this.modelRenderers.colossus?.hideInstance(index);
+    this.modelRenderers.starship?.hideInstance(index);
+  }
+
+  getRendererKeyForIndex(index) {
+    if (this.typeId[index] === 3) {
+      return 'colossus';
+    }
+    return this.typeId[index] === 2 ? 'starship' : this.typeId[index] === 1 ? 'colossus' : 'spark';
+  }
+
+  spawnProjectilesForUnit(index, nearestTarget, projectiles) {
+    const typeKey = this.getRendererKeyForIndex(index);
+    const projectileColor = this.unitTypes[typeKey].projectileColor;
+    const unitPosition = new THREE.Vector3(this.posX[index], 0, this.posZ[index]);
+
+    if (typeKey === 'starship') {
+      const yaw = this.yaw[index];
+      const offsets = [
+        new THREE.Vector3(-1.8, 0, 2.2),
+        new THREE.Vector3(1.8, 0, 2.2),
+        new THREE.Vector3(-1.2, 0, -0.2),
+        new THREE.Vector3(1.2, 0, -0.2),
+      ];
+      const rotation = new THREE.Euler(0, yaw, 0);
+
+      offsets.forEach((offset) => {
+        this.projectilePosition.copy(offset).applyEuler(rotation).add(unitPosition);
+        this.spawnPosition.copy(nearestTarget.mesh.position).sub(this.projectilePosition).normalize();
+        projectiles.push(
+          new Projectile(
+            this.scene,
+            this.projectilePosition,
+            this.spawnPosition,
+            projectileColor,
+            true,
+            this.damagePerShot[index],
+            this.aggroRange[index] * 2
+          )
+        );
+      });
+      return;
+    }
+
+    this.projectilePosition.copy(unitPosition);
+    this.spawnPosition.copy(nearestTarget.mesh.position).sub(this.projectilePosition).normalize();
+    projectiles.push(
+      new Projectile(
+        this.scene,
+        this.projectilePosition,
+        this.spawnPosition,
+        projectileColor,
+        true,
+        this.damagePerShot[index],
+        this.aggroRange[index] * 2
+      )
+    );
+  }
+
+  maybeSpawnStarshipEscort(index, currentTime) {
+    const spawnInterval = this.unitTypes.starship.spawnInterval;
+    if (currentTime - this.lastSpawnTime[index] < spawnInterval) {
+      return;
+    }
+
+    const yaw = this.yaw[index];
+    const spawnOffsets = [
+      new THREE.Vector3(-3.5, 0, -4.5),
+      new THREE.Vector3(0, 0, -5.5),
+      new THREE.Vector3(3.5, 0, -4.5),
+    ];
+    const rotation = new THREE.Euler(0, yaw, 0);
+
+    spawnOffsets.forEach((offset) => {
+      const spawnPosition = offset.clone().applyEuler(rotation).add(new THREE.Vector3(this.posX[index], 0, this.posZ[index]));
+      this.spawn(spawnPosition, 'spark', 1);
+    });
+
+    this.lastSpawnTime[index] = currentTime;
   }
 }

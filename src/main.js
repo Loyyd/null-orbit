@@ -3,7 +3,9 @@ import * as THREE from 'three';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { VignetteShader } from 'three/examples/jsm/shaders/VignetteShader.js';
 import { Projectile } from './projectile';
 import { BaseStation } from './base';
 import { WaveManager } from './waveManager';
@@ -21,15 +23,19 @@ import { createShatterEffectSystem } from './shatterEffect';
 // --- Setup ---
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 2000); // Extended far plane
-const renderer = new THREE.WebGLRenderer({ antialias: true });
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
 
 renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.setPixelRatio(window.devicePixelRatio);
-renderer.toneMapping = THREE.ReinhardToneMapping;
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.62;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 document.body.appendChild(renderer.domElement);
 
 // --- Environment ---
-createSpace(scene);
+const space = createSpace(scene);
 
 // --- Map Data ---
 const mapData = loadMap();
@@ -37,17 +43,36 @@ const gameOptions = loadGameOptions();
 
 // --- Post-Processing ---
 const renderScene = new RenderPass(scene, camera);
-const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.5, 0.4, 0.85);
+const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.38, 0.58, 0.8);
+const vignettePass = new ShaderPass(VignetteShader);
+vignettePass.uniforms.offset.value = 0.84;
+vignettePass.uniforms.darkness.value = 0.35;
 const composer = new EffectComposer(renderer);
 composer.addPass(renderScene);
 composer.addPass(bloomPass);
+composer.addPass(vignettePass);
 
 // --- Lighting ---
-const ambientLight = new THREE.AmbientLight(0xffffff, 0.2);
+const ambientLight = new THREE.AmbientLight(0xd8eaff, 0.56);
 scene.add(ambientLight);
-const directionalLight = new THREE.DirectionalLight(0xffffff, 1.2); // Stronger star-like light
-directionalLight.position.set(50, 100, 70);
+const hemisphereLight = new THREE.HemisphereLight(0xb5e6ff, 0x2f4866, 1.38);
+scene.add(hemisphereLight);
+const directionalLight = new THREE.DirectionalLight(0xfff1d5, 2.1);
+directionalLight.position.set(52, 90, 64);
+directionalLight.castShadow = true;
+directionalLight.shadow.mapSize.set(2048, 2048);
+directionalLight.shadow.camera.near = 1;
+directionalLight.shadow.camera.far = 260;
+directionalLight.shadow.camera.left = -110;
+directionalLight.shadow.camera.right = 110;
+directionalLight.shadow.camera.top = 110;
+directionalLight.shadow.camera.bottom = -110;
+directionalLight.shadow.bias = -0.00018;
+directionalLight.shadow.normalBias = 0.03;
 scene.add(directionalLight);
+const rimLight = new THREE.DirectionalLight(0x8fddff, 1.05);
+rimLight.position.set(-68, 42, -90);
+scene.add(rimLight);
 const gltfLoader = new GLTFLoader();
 // --- Game State ---
 const clock = new THREE.Clock();
@@ -115,6 +140,8 @@ player.add(playerVisualRoot);
 const playerGeometry = new THREE.BoxGeometry(1, 0.5, 2);
 const playerMaterial = new THREE.MeshStandardMaterial({ color: 0x00ff00, emissive: 0x00ff00, emissiveIntensity: 0.5 });
 const fallbackPlayerMesh = new THREE.Mesh(playerGeometry, playerMaterial);
+fallbackPlayerMesh.castShadow = true;
+fallbackPlayerMesh.receiveShadow = true;
 playerVisualRoot.add(fallbackPlayerMesh);
 let playerModel = null;
 
@@ -128,6 +155,14 @@ function forEachObjectMaterial(root, callback) {
     materials.forEach((material) => {
       if (material) callback(material);
     });
+  });
+}
+
+function setObjectShadows(root, castShadow = true, receiveShadow = true) {
+  root.traverse((child) => {
+    if (!child.isMesh) return;
+    child.castShadow = castShadow;
+    child.receiveShadow = receiveShadow;
   });
 }
 
@@ -212,6 +247,7 @@ gltfLoader.load(
     fallbackPlayerMesh.visible = false;
     playerModel = gltf.scene;
     fitPlayerModel(playerModel);
+    setObjectShadows(playerModel, true, true);
     playerVisualRoot.add(playerModel);
     setPlayerAppearance(playerBaseColor, playerBaseEmissiveIntensity);
   },
@@ -461,6 +497,10 @@ gltfLoader.load(
         rotationZ: (Math.random() - 0.5) * 0.35,
         offsetY: -0.2,
       });
+      rockModel.traverse((child) => {
+        if (!child.isMesh) return;
+        child.receiveShadow = true;
+      });
       visualRoot.add(rockModel);
       rockSpinners.push({
         model: rockModel,
@@ -489,6 +529,8 @@ mapData.obstacles.forEach(o => {
 
   const obsGeo = new THREE.BoxGeometry(w, 2, h);
   const fallbackMesh = new THREE.Mesh(obsGeo, obsMat);
+  fallbackMesh.castShadow = false;
+  fallbackMesh.receiveShadow = true;
   obstacle.add(fallbackMesh);
 
   o._visualRoot = visualRoot;
@@ -505,13 +547,15 @@ const enemyController = new FlowFieldUnitController(scene, occupancyMap, navigat
   enemyConfig: gameOptions.enemy,
   onEnemyDestroyed: ({ position, type }) => {
     if (position) {
+      const isStarship = type === 'starship';
+      const isColossusClass = type === 'colossus' || type === 'miniColossus';
       shatterEffects.spawn(position, {
-        size: type === 'colossus' ? 4.8 : 2.3,
-        color: type === 'colossus' ? 0xb36cff : 0xff5577,
-        segmentCount: type === 'colossus' ? 4 : 3,
-        duration: type === 'colossus' ? 0.9 : 0.7,
-        spread: type === 'colossus' ? 11 : 8,
-        lift: type === 'colossus' ? 3.2 : 2.4,
+        size: isStarship ? 5.1 : isColossusClass ? 3.2 : 1.55,
+        color: isStarship ? 0x9d2c2c : isColossusClass ? 0x742b31 : 0x8a3940,
+        segmentCount: isStarship ? 5 : isColossusClass ? 4 : 3,
+        duration: isStarship ? 1.45 : isColossusClass ? 1.2 : 1,
+        spread: isStarship ? 7.2 : isColossusClass ? 5.8 : 4.6,
+        lift: isStarship ? 1.1 : isColossusClass ? 0.9 : 0.65,
       });
     }
     playerState.plasmaCells += 10;
@@ -578,8 +622,12 @@ if (mapData.bombs) {
 // --- Tactical Grid (Holographic) ---
 const gridHelper = new THREE.GridHelper(2000, 200, 0x00ffff, 0x004444);
 gridHelper.position.y = -0.5;
-gridHelper.material.transparent = true;
-gridHelper.material.opacity = 0.2;
+const gridMaterials = Array.isArray(gridHelper.material) ? gridHelper.material : [gridHelper.material];
+gridMaterials.forEach((material) => {
+  material.transparent = true;
+  material.opacity = 0.12;
+  material.depthWrite = false;
+});
 scene.add(gridHelper);
 
 // --- Loop Variables ---
@@ -662,12 +710,12 @@ function destroyBomb(bombIndex) {
   if (!bomb) return;
 
   shatterEffects.spawn(bomb.position, {
-    size: 2.8,
-    color: 0xff5533,
+    size: 1.9,
+    color: 0x9a4542,
     segmentCount: 3,
-    duration: 0.75,
-    spread: 9.5,
-    lift: 2.8,
+    duration: 1.05,
+    spread: 5,
+    lift: 0.72,
   });
 
   scene.remove(bomb);
@@ -918,6 +966,7 @@ function animate() {
     gameState.cameraShakeTime = Math.max(0, gameState.cameraShakeTime - deltaTime);
   }
   abilities.refreshButtons();
+  space.update?.(deltaTime, clock.elapsedTime);
   updateRockSpinners(deltaTime);
   updateShatterEffects(deltaTime);
   updateDebugOverlay(deltaTime);

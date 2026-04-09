@@ -23,6 +23,8 @@ export const DEFAULT_GAME_OPTIONS = {
     squadSpread: 15,
     pulsarChanceBase: 0.1,
     pulsarChancePerWave: 0.05,
+    starshipStartWave: 5,
+    starshipWaveInterval: 5,
   },
   enemy: {
     maxUnits: 768,
@@ -43,6 +45,12 @@ export const DEFAULT_GAME_OPTIONS = {
     pulsarAggroRange: 45,
     pulsarShootInterval: 4800,
     pulsarDamage: 25,
+    starshipSpeed: 0.008,
+    starshipHealthBase: 400,
+    starshipAggroRange: 60,
+    starshipShootInterval: 5200,
+    starshipDamage: 18,
+    starshipSpawnInterval: 10000,
   },
   base: {
     fireRange: 40,
@@ -99,6 +107,8 @@ export const GAME_OPTION_SECTIONS = [
       { path: 'wave.squadSpread', label: 'Squad Spread', min: 0, max: 100, step: 1 },
       { path: 'wave.pulsarChanceBase', label: 'Colossus Chance Base', min: 0, max: 1, step: 0.01 },
       { path: 'wave.pulsarChancePerWave', label: 'Colossus Chance / Wave', min: 0, max: 0.5, step: 0.01 },
+      { path: 'wave.starshipStartWave', label: 'Starship Start Wave', min: 1, max: 100, step: 1 },
+      { path: 'wave.starshipWaveInterval', label: 'Starship Wave Interval', min: 1, max: 20, step: 1 },
     ],
   },
   {
@@ -122,6 +132,12 @@ export const GAME_OPTION_SECTIONS = [
       { path: 'enemy.pulsarAggroRange', label: 'Colossus Aggro Range', min: 1, max: 100, step: 1 },
       { path: 'enemy.pulsarShootInterval', label: 'Colossus Shoot Interval', min: 100, max: 10000, step: 50 },
       { path: 'enemy.pulsarDamage', label: 'Colossus Damage', min: 1, max: 250, step: 1 },
+      { path: 'enemy.starshipSpeed', label: 'Starship Speed', min: 0.001, max: 0.1, step: 0.001 },
+      { path: 'enemy.starshipHealthBase', label: 'Starship Health', min: 1, max: 2000, step: 1 },
+      { path: 'enemy.starshipAggroRange', label: 'Starship Aggro Range', min: 1, max: 200, step: 1 },
+      { path: 'enemy.starshipShootInterval', label: 'Starship Shoot Interval', min: 100, max: 20000, step: 50 },
+      { path: 'enemy.starshipDamage', label: 'Starship Damage', min: 1, max: 500, step: 1 },
+      { path: 'enemy.starshipSpawnInterval', label: 'Starship Mini Spawn Interval', min: 100, max: 60000, step: 100 },
     ],
   },
   {
