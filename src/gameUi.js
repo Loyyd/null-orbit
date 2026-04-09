@@ -199,7 +199,10 @@ export function createGameUi({
   upgradeTooltip.innerHTML = `
     <div id="upgrade-tooltip-title"></div>
     <div id="upgrade-tooltip-description"></div>
-    <div id="upgrade-tooltip-cost"></div>
+    <div id="upgrade-tooltip-cost">
+      <img id="upgrade-tooltip-cost-icon" alt="Plasma cell" src="${plasmaCellIcon}">
+      <span id="upgrade-tooltip-cost-value"></span>
+    </div>
   `;
   document.body.appendChild(upgradeTooltip);
 
@@ -231,7 +234,7 @@ export function createGameUi({
     currencyValue: currencyBar.querySelector('#currency-value'),
     tooltipTitle: upgradeTooltip.querySelector('#upgrade-tooltip-title'),
     tooltipDescription: upgradeTooltip.querySelector('#upgrade-tooltip-description'),
-    tooltipCost: upgradeTooltip.querySelector('#upgrade-tooltip-cost'),
+    tooltipCostValue: upgradeTooltip.querySelector('#upgrade-tooltip-cost-value'),
     debugSkipWaveButton: debugInfo.querySelector('#debug-skip-wave-btn'),
     debugBody: debugInfo.querySelector('#debug-body'),
   };
@@ -246,7 +249,7 @@ export function createGameUi({
   function showUpgradeTooltip(target) {
     elements.tooltipTitle.innerText = target.dataset.title;
     elements.tooltipDescription.innerText = target.dataset.description;
-    elements.tooltipCost.innerText = `Cost: ${target.dataset.cost} plasma cells`;
+    elements.tooltipCostValue.innerText = `${target.dataset.cost}`;
     positionTooltip(target);
     upgradeTooltip.classList.add('visible');
   }

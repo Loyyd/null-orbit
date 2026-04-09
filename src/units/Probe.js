@@ -35,7 +35,7 @@ export class Probe extends Unit {
       targetWidth: 0.8,
       targetHeight: 0.4,
       targetLength: 1.2,
-      rotationY: -Math.PI / 2,
+      rotationY: Math.PI / 2,
     }).then((model) => {
       if (model) {
         this.fallbackBodyMesh.visible = false;

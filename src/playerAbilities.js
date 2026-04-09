@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import shieldButtonIcon from './assets/buttons/button_shield.png';
+import yamatoButtonIcon from './assets/buttons/button_yamato.png';
 
 export function createPlayerAbilities({
   scene,
@@ -28,8 +30,13 @@ export function createPlayerAbilities({
     const now = performance.now();
 
     purchasedModules.forEach((module, index) => {
-      const coolingDown = getModuleCooldownRemaining(module, now) > 0;
+      const cooldownRemaining = getModuleCooldownRemaining(module, now);
+      const coolingDown = cooldownRemaining > 0;
+      const cooldownProgress = module.cooldownMs > 0
+        ? 1 - (cooldownRemaining / module.cooldownMs)
+        : 1;
       module.slot.textContent = `${index + 1}`;
+      module.button.style.setProperty('--cooldown-progress', `${THREE.MathUtils.clamp(cooldownProgress, 0, 1)}`);
       module.button.classList.toggle(
         'active',
         module.id === 'shield' ? playerState.abilities.shieldActive : playerState.abilities.selectedModuleId === module.id
@@ -38,7 +45,7 @@ export function createPlayerAbilities({
       module.button.classList.toggle('cooldown', coolingDown);
       module.button.disabled = coolingDown;
       module.button.title = coolingDown
-        ? `${Math.ceil(getModuleCooldownRemaining(module, now) / 1000)}s cooldown`
+        ? `${Math.ceil(cooldownRemaining / 1000)}s cooldown`
         : module.label;
     });
   }
@@ -137,7 +144,8 @@ export function createPlayerAbilities({
     button.className = 'module-btn';
     button.innerHTML = `
       <span class="module-slot"></span>
-      <span class="module-icon">${icon}</span>
+      <span class="module-cooldown-ring" aria-hidden="true"></span>
+      <span class="module-icon"><img src="${icon}" alt="${label}"></span>
       <span class="module-label">${label}</span>
     `;
 
@@ -152,14 +160,14 @@ export function createPlayerAbilities({
   function buyShieldModule() {
     if (playerState.abilities.shieldOwned) return;
     playerState.abilities.shieldOwned = true;
-    addPurchasedModule('shield', 'S', 'Shield', activateShieldModule, gameOptions.modules.shieldCooldownMs);
+    addPurchasedModule('shield', shieldButtonIcon, 'Shield', activateShieldModule, gameOptions.modules.shieldCooldownMs);
     ui.hideShieldUpgrade();
   }
 
   function buyYamatoModule() {
     if (playerState.abilities.yamatoOwned) return;
     playerState.abilities.yamatoOwned = true;
-    addPurchasedModule('yamato', 'Y', 'Yamato', activateYamatoModule, gameOptions.modules.yamatoCooldownMs);
+    addPurchasedModule('yamato', yamatoButtonIcon, 'Yamato', activateYamatoModule, gameOptions.modules.yamatoCooldownMs);
     ui.hideYamatoUpgrade();
   }
 

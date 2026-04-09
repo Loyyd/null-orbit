@@ -34,7 +34,7 @@ export class EnemyUnit extends Unit {
       targetWidth: this.size,
       targetHeight: this.size * 0.5,
       targetLength: this.size * 1.5,
-      rotationY: -Math.PI / 2,
+      rotationY: Math.PI / 2,
     }, config.modelPath || '/models/player_ship.glb').then((model) => {
       if (model) {
         this.fallbackBodyMesh.visible = false;

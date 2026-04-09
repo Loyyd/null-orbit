@@ -200,7 +200,7 @@ export class BaseStation {
     const scaledSize = scaledBounds.getSize(new THREE.Vector3());
     model.position.sub(scaledCenter);
     model.position.y += scaledSize.y * 0.5;
-    model.position.y -= 1.2;
+    model.position.y -= 6;
   }
 
   updateHealthBar() {
@@ -211,7 +211,7 @@ export class BaseStation {
 
   addCannonMesh(index, total) {
     const angle = (index / total) * Math.PI * 2;
-    const radius = 6;
+    const radius = 4;
 
     const pivot = new THREE.Group();
     const x = Math.cos(angle) * radius;

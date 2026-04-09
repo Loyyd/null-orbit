@@ -87,6 +87,10 @@ export async function createSharedModelInstancedRenderer(scene, maxCount, fitOpt
     instancedMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     instancedMesh.castShadow = false;
     instancedMesh.receiveShadow = false;
+    // These instance transforms move constantly and can span a wide area,
+    // so relying on default instanced-mesh frustum bounds causes models to
+    // pop out or stay invisible even while their gameplay continues.
+    instancedMesh.frustumCulled = false;
     instancedMesh.count = 0;
     scene.add(instancedMesh);
 
@@ -155,6 +159,7 @@ class SharedShipInstancedRenderer {
   flush() {
     this.parts.forEach((part) => {
       part.mesh.instanceMatrix.needsUpdate = true;
+      part.mesh.computeBoundingSphere();
     });
   }
 

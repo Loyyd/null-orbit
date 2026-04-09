@@ -16,6 +16,7 @@ import { buildOccupancyMap, createGridAdapter } from './navigation/grid';
 import { FlowFieldUnitController } from './units/FlowFieldUnitController';
 import { createGameUi } from './gameUi';
 import { createPlayerAbilities } from './playerAbilities';
+import { createShatterEffectSystem } from './shatterEffect';
 
 // --- Setup ---
 const scene = new THREE.Scene();
@@ -63,6 +64,8 @@ const RAPID_FIRE_PRE_TIER_MAX = 3;
 const RAPID_FIRE_POST_TIER_MAX = 6;
 const ACCELERATION_PRE_TIER_MAX = 1;
 const ACCELERATION_POST_TIER_MAX = 4;
+const THRUSTER_ACCELERATION_UPGRADE_STEP = 0.001;
+const THRUSTER_ROTATION_UPGRADE_STEP = 0.001;
 
 const playerState = {
   acceleration: gameOptions.player.acceleration,
@@ -343,8 +346,8 @@ const ui = createGameUi({
     if (!canUpgradeAcceleration()) return;
     if (!spendPlasma()) return;
     playerState.accelerationUpgradeLevel += 1;
-    playerState.acceleration += 0.0025;
-    playerState.rotationSpeed += 0.0025;
+    playerState.acceleration += THRUSTER_ACCELERATION_UPGRADE_STEP;
+    playerState.rotationSpeed += THRUSTER_ROTATION_UPGRADE_STEP;
     syncUpgradeUi();
   },
   onUpgradeTier2: () => {
@@ -426,6 +429,7 @@ const navigationGrid = createGridAdapter({
   minX: -40,
   minZ: -140,
 });
+const shatterEffects = createShatterEffectSystem(scene);
 
 // --- Obstacles ---
 const obstacleColliders = [];
@@ -499,7 +503,17 @@ const enemyController = new FlowFieldUnitController(scene, occupancyMap, navigat
   obstacleAvoidanceStrength: gameOptions.enemy.obstacleAvoidanceStrength,
   boundsLimit: gameOptions.enemy.boundsLimit,
   enemyConfig: gameOptions.enemy,
-  onEnemyDestroyed: () => {
+  onEnemyDestroyed: ({ position, type }) => {
+    if (position) {
+      shatterEffects.spawn(position, {
+        size: type === 'colossus' ? 4.8 : 2.3,
+        color: type === 'colossus' ? 0xb36cff : 0xff5577,
+        segmentCount: type === 'colossus' ? 4 : 3,
+        duration: type === 'colossus' ? 0.9 : 0.7,
+        spread: type === 'colossus' ? 11 : 8,
+        lift: type === 'colossus' ? 3.2 : 2.4,
+      });
+    }
     playerState.plasmaCells += 10;
     ui.setCurrency(playerState.plasmaCells);
     syncUpgradeUi();
@@ -647,6 +661,15 @@ function destroyBomb(bombIndex) {
   const bomb = bombs[bombIndex];
   if (!bomb) return;
 
+  shatterEffects.spawn(bomb.position, {
+    size: 2.8,
+    color: 0xff5533,
+    segmentCount: 3,
+    duration: 0.75,
+    spread: 9.5,
+    lift: 2.8,
+  });
+
   scene.remove(bomb);
   bomb.traverse((child) => {
     child.geometry?.dispose?.();
@@ -679,6 +702,10 @@ function updateRockSpinners(deltaTime) {
     const spinner = rockSpinners[i];
     spinner.model.rotateOnAxis(spinner.axis, spinner.speed * deltaTime);
   }
+}
+
+function updateShatterEffects(deltaTime) {
+  shatterEffects.update(deltaTime);
 }
 
 function updateDebugOverlay(deltaTime) {
@@ -892,6 +919,7 @@ function animate() {
   }
   abilities.refreshButtons();
   updateRockSpinners(deltaTime);
+  updateShatterEffects(deltaTime);
   updateDebugOverlay(deltaTime);
 
   if (!playerState.isDead) {

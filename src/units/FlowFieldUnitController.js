@@ -112,6 +112,7 @@ export class FlowFieldUnitController {
     this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.mesh.castShadow = false;
     this.mesh.receiveShadow = false;
+    this.mesh.frustumCulled = false;
     this.mesh.count = 0;
     scene.add(this.mesh);
     this.modelRenderers = {
@@ -124,7 +125,7 @@ export class FlowFieldUnitController {
       targetWidth: 1,
       targetHeight: 0.45,
       targetLength: 1.4,
-      rotationY: -Math.PI / 2,
+      rotationY: Math.PI / 2,
     }, '/models/player_ship.glb').then((renderer) => {
       this.modelRenderers.spark = renderer;
       this.onModelRendererReady();
@@ -136,7 +137,7 @@ export class FlowFieldUnitController {
       targetWidth: 1.8,
       targetHeight: 1.4,
       targetLength: 2.8,
-      rotationY: -Math.PI / 2,
+      rotationY: Math.PI / 2,
     }, '/models/colossus.glb').then((renderer) => {
       this.modelRenderers.colossus = renderer;
       this.onModelRendererReady();
@@ -209,6 +210,7 @@ export class FlowFieldUnitController {
 
   removeAt(index, reason = 'despawned') {
     const removedTypeId = this.typeId[index];
+    const removedPosition = new THREE.Vector3(this.posX[index], 0, this.posZ[index]);
     const lastIndex = this.count - 1;
     const removedProxy = this.targets[index];
     if (removedProxy) {
@@ -246,6 +248,7 @@ export class FlowFieldUnitController {
     if (reason === 'destroyed') {
       this.onEnemyDestroyed?.({
         type: removedTypeId === 1 ? 'colossus' : 'spark',
+        position: removedPosition,
       });
     }
     if (this.hasModelRenderers()) {
@@ -273,6 +276,8 @@ export class FlowFieldUnitController {
     for (let index = this.count - 1; index >= 0; index--) {
       const unitX = this.posX[index];
       const unitZ = this.posZ[index];
+      const strategicTarget = this.findPriorityNavigationTarget(index, combatTargets, navigationTarget);
+      const pursuitTarget = strategicTarget?.mesh?.position || navigationTarget;
 
       if (
         !isFiniteNumber(unitX) ||
@@ -284,7 +289,7 @@ export class FlowFieldUnitController {
         continue;
       }
 
-      if (Math.abs(unitZ - navigationTarget.z) > this.boundsLimit) {
+      if (Math.abs(unitZ - pursuitTarget.z) > this.boundsLimit) {
         this.removeAt(index, 'out_of_bounds');
         continue;
       }
@@ -293,8 +298,8 @@ export class FlowFieldUnitController {
       const cellY = this.grid.clampCellY(this.grid.toCellY(unitZ));
       const nearestTarget = this.findNearestTarget(index, combatTargets);
 
-      let desiredX = navigationTarget.x - unitX;
-      let desiredZ = navigationTarget.z - unitZ;
+      let desiredX = pursuitTarget.x - unitX;
+      let desiredZ = pursuitTarget.z - unitZ;
 
       if (nearestTarget) {
         desiredX = nearestTarget.mesh.position.x - unitX;
@@ -460,6 +465,46 @@ export class FlowFieldUnitController {
     }
 
     return nearestTarget;
+  }
+
+  findPriorityNavigationTarget(index, combatTargets, fallbackTarget) {
+    const unitX = this.posX[index];
+    const unitZ = this.posZ[index];
+    let bestTarget = null;
+    let bestScore = Infinity;
+
+    for (const target of combatTargets) {
+      if (!target || target.isDead || !target.mesh?.position) continue;
+
+      const dx = target.mesh.position.x - unitX;
+      const dz = target.mesh.position.z - unitZ;
+      const distance = Math.hypot(dx, dz);
+      const priorityWeight = this.getNavigationPriorityWeight(target, fallbackTarget);
+      const score = distance * priorityWeight;
+
+      if (score < bestScore) {
+        bestScore = score;
+        bestTarget = target;
+      }
+    }
+
+    return bestTarget;
+  }
+
+  getNavigationPriorityWeight(target, fallbackTarget) {
+    if (target.owner === 'player') {
+      return 0.45;
+    }
+
+    if (target.type === 'probe') {
+      return 0.8;
+    }
+
+    if (target.mesh === fallbackTarget) {
+      return 1;
+    }
+
+    return 1.15;
   }
 
   syncInstanceAt(index) {
