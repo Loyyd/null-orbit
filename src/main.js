@@ -551,7 +551,7 @@ const enemyController = new FlowFieldUnitController(scene, occupancyMap, navigat
       const isColossusClass = type === 'colossus' || type === 'miniColossus';
       shatterEffects.spawn(position, {
         size: isStarship ? 5.1 : isColossusClass ? 3.2 : 1.55,
-        color: isStarship ? 0x9d2c2c : isColossusClass ? 0x742b31 : 0x8a3940,
+        color: 0xffffff,
         segmentCount: isStarship ? 5 : isColossusClass ? 4 : 3,
         duration: isStarship ? 1.45 : isColossusClass ? 1.2 : 1,
         spread: isStarship ? 7.2 : isColossusClass ? 5.8 : 4.6,
@@ -711,7 +711,7 @@ function destroyBomb(bombIndex) {
 
   shatterEffects.spawn(bomb.position, {
     size: 1.9,
-    color: 0x9a4542,
+    color: 0xffffff,
     segmentCount: 3,
     duration: 1.05,
     spread: 5,

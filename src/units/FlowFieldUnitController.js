@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { Projectile } from '../projectile';
 import { createSharedModelInstancedRenderer } from '../sharedShipModel';
 
+const HIT_FLASH_DURATION_MS = 80;
+
 const UNIT_TYPES = {
   spark: {
     scale: 1.2,
@@ -134,9 +136,12 @@ export class FlowFieldUnitController {
     this.scale = new Float32Array(this.maxUnits);
     this.typeId = new Uint8Array(this.maxUnits);
     this.lastSpawnTime = new Float64Array(this.maxUnits);
+    this.hitFlashUntil = new Float64Array(this.maxUnits);
     this.next = new Int32Array(this.maxUnits);
     this.cellHeads = new Int32Array(grid.width * grid.height);
     this.cellHeads.fill(-1);
+    this.defaultColor = new THREE.Color(0xffffff);
+    this.hitFlashColor = new THREE.Color(0xff4a4a);
 
     this.geometry = new THREE.BoxGeometry(1, 0.45, 1.4);
     this.material = new THREE.MeshStandardMaterial({
@@ -239,6 +244,7 @@ export class FlowFieldUnitController {
     this.shootInterval[index] = config.shootInterval;
     this.lastShotTime[index] = 0;
     this.lastSpawnTime[index] = performance.now();
+    this.hitFlashUntil[index] = 0;
     this.damagePerShot[index] = config.damagePerShot;
     this.scale[index] = config.scale;
     this.typeId[index] = normalizedType === 'colossus'
@@ -266,6 +272,8 @@ export class FlowFieldUnitController {
     if (index < 0 || index >= this.count) return;
 
     this.health[index] -= amount;
+    this.hitFlashUntil[index] = performance.now() + HIT_FLASH_DURATION_MS;
+    this.syncInstanceAt(index, performance.now());
     if (this.health[index] <= 0) {
       this.removeAt(index, 'destroyed');
     }
@@ -298,6 +306,7 @@ export class FlowFieldUnitController {
       this.scale[index] = this.scale[lastIndex];
       this.typeId[index] = this.typeId[lastIndex];
       this.lastSpawnTime[index] = this.lastSpawnTime[lastIndex];
+      this.hitFlashUntil[index] = this.hitFlashUntil[lastIndex];
 
       const movedProxy = this.targets[lastIndex];
       this.targets[index] = movedProxy;
@@ -572,7 +581,8 @@ export class FlowFieldUnitController {
     return 1.15;
   }
 
-  syncInstanceAt(index) {
+  syncInstanceAt(index, currentTime = performance.now()) {
+    const displayColor = currentTime < this.hitFlashUntil[index] ? this.hitFlashColor : this.defaultColor;
     if (this.hasModelRenderers()) {
       const rendererKey = this.getRendererKeyForIndex(index);
       ['spark', 'colossus', 'starship'].forEach((key) => {
@@ -584,6 +594,7 @@ export class FlowFieldUnitController {
             this.yaw[index],
             this.scale[index]
           );
+          this.modelRenderers[key]?.setInstanceColor(index, displayColor);
         } else {
           this.modelRenderers[key]?.hideInstance(index);
         }
@@ -596,6 +607,7 @@ export class FlowFieldUnitController {
     this.dummy.scale.set(this.scale[index], this.scale[index], this.scale[index]);
     this.dummy.updateMatrix();
     this.mesh.setMatrixAt(index, this.dummy.matrix);
+    this.mesh.setColorAt(index, displayColor);
   }
 
   hasModelRenderers() {

@@ -5,14 +5,19 @@ export class WaveManager {
     this.scene = scene;
     this.waveOptions = gameOptions.wave || {};
     this.spawnTimer = 0;
+    this.elapsedTime = 0;
     this.waveLevel = 1;
     this.debugWaveOverride = null;
   }
 
   update(playerPos, enemyController, deltaTime) {
     const zoneDistance = this.waveOptions.zoneDistance ?? 80;
+    const timePerWaveIncrease = this.waveOptions.timePerWaveIncrease ?? 60;
+    this.elapsedTime += deltaTime;
     const distancePush = Math.abs(playerPos.z - 20);
-    const computedWave = 1 + Math.floor(distancePush / zoneDistance);
+    const distanceWave = 1 + Math.floor(distancePush / zoneDistance);
+    const timeWave = 1 + Math.floor(this.elapsedTime / Math.max(timePerWaveIncrease, 1));
+    const computedWave = Math.max(distanceWave, timeWave);
     this.waveLevel = Math.max(computedWave, this.debugWaveOverride ?? 1);
 
     this.spawnTimer += deltaTime;

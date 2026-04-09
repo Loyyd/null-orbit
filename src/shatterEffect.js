@@ -81,7 +81,7 @@ export function createShatterEffectSystem(scene) {
 
   function spawn(position, {
     size = 2,
-    color = 0x7d3a3f,
+    color = 0xffffff,
     segmentCount = 3,
     duration = 0.95,
     spread = 5.5,

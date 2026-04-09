@@ -12,6 +12,7 @@ export const DEFAULT_GAME_OPTIONS = {
   },
   wave: {
     zoneDistance: 80,
+    timePerWaveIncrease: 60,
     spawnThresholdMin: 8,
     spawnThresholdBase: 16,
     spawnThresholdDropPerWave: 0.75,
@@ -23,7 +24,7 @@ export const DEFAULT_GAME_OPTIONS = {
     squadSpread: 15,
     pulsarChanceBase: 0.1,
     pulsarChancePerWave: 0.05,
-    starshipStartWave: 5,
+    starshipStartWave: 6,
     starshipWaveInterval: 5,
   },
   enemy: {
@@ -96,6 +97,7 @@ export const GAME_OPTION_SECTIONS = [
     title: 'Wave Spawning',
     fields: [
       { path: 'wave.zoneDistance', label: 'Zone Distance', min: 10, max: 300, step: 5 },
+      { path: 'wave.timePerWaveIncrease', label: 'Seconds Per Wave Increase', min: 5, max: 600, step: 5 },
       { path: 'wave.spawnThresholdMin', label: 'Spawn Cooldown Min', min: 0.5, max: 60, step: 0.5 },
       { path: 'wave.spawnThresholdBase', label: 'Spawn Cooldown Base', min: 1, max: 60, step: 0.5 },
       { path: 'wave.spawnThresholdDropPerWave', label: 'Cooldown Drop / Wave', min: 0, max: 5, step: 0.05 },

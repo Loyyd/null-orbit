@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { Projectile } from './projectile';
+import { attachCannonModel } from './cannonModel';
 
 export class Cannon {
   constructor(scene, parent, offset, config = {}) {
@@ -11,6 +12,15 @@ export class Cannon {
     this.mesh = new THREE.Object3D();
     this.mesh.position.copy(offset);
     this.parent.add(this.mesh);
+
+    attachCannonModel(this.mesh, {
+      targetWidth: 0.42,
+      targetHeight: 0.42,
+      targetLength: 1.15,
+      rotationY: Math.PI / 2,
+      offsetY: 0.02,
+      offsetZ: -0.05,
+    });
 
     // Stats
     this.range = config.range ?? 35;

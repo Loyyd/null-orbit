@@ -150,6 +150,12 @@ class SharedShipInstancedRenderer {
     });
   }
 
+  setInstanceColor(index, color) {
+    this.parts.forEach((part) => {
+      part.mesh.setColorAt(index, color);
+    });
+  }
+
   hideInstance(index) {
     this.parts.forEach((part) => {
       part.mesh.setMatrixAt(index, this.hiddenMatrix);
@@ -159,6 +165,9 @@ class SharedShipInstancedRenderer {
   flush() {
     this.parts.forEach((part) => {
       part.mesh.instanceMatrix.needsUpdate = true;
+      if (part.mesh.instanceColor) {
+        part.mesh.instanceColor.needsUpdate = true;
+      }
       part.mesh.computeBoundingSphere();
     });
   }

@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { Projectile } from './projectile';
 import { Probe } from './units/Probe';
+import { attachCannonModel } from './cannonModel';
 
 const TEAM_CONFIG = {
   player: {
@@ -62,17 +63,22 @@ export class BaseStation {
     this.hitRadius = 6.5;
     this.captureCooldownUntil = 0;
     this.isDead = false;
-    this.baseEmissiveIntensity = 1;
+    this.baseEmissiveIntensity = 0;
     this.debugVisible = false;
     this.baseModel = null;
-    this.accentLight = new THREE.PointLight(0x77d9ff, 2.2, 34, 2);
-    this.accentLight.position.set(0, 7.5, 0);
+    this.overheadLightTarget = new THREE.Object3D();
+    this.overheadLightTarget.position.set(0, 0, 0);
+    this.overheadLight = new THREE.SpotLight(0xf4f7ff, 100, 62, Math.PI / 2.9, 0.45, 0.9);
+    this.overheadLight.position.set(0, 14, 4);
+    this.overheadLight.target = this.overheadLightTarget;
+    this.overheadLight.castShadow = false;
 
     this.material = new THREE.MeshStandardMaterial();
     this.mesh = new THREE.Group();
     this.mesh.position.copy(position);
     scene.add(this.mesh);
-    this.mesh.add(this.accentLight);
+    this.mesh.add(this.overheadLightTarget);
+    this.mesh.add(this.overheadLight);
 
     this.visualRoot = new THREE.Group();
     this.mesh.add(this.visualRoot);
@@ -170,8 +176,8 @@ export class BaseStation {
         if ('metalness' in material) material.metalness = Math.max(material.metalness ?? 0, 0.12);
       });
     }
-    this.accentLight.color.setHex(config.projectileColor);
-    this.accentLight.intensity = this.owner === 'player' ? 2.4 : 2.1;
+    this.overheadLight.color.setHex(this.owner === 'player' ? 0xf4f7ff : 0xffe7dd);
+    this.overheadLight.intensity = this.owner === 'player' ? 6.2 : 5.4;
     this.fireRangeMesh.material.color.setHex(config.fireRangeColor);
     this.interactionRangeMesh.material.color.setHex(config.interactionColor);
     this.beamMat.color.setHex(config.healingColor);
@@ -245,6 +251,16 @@ export class BaseStation {
     cannon.castShadow = true;
     cannon.receiveShadow = true;
     pivot.add(cannon);
+
+    attachCannonModel(pivot, {
+      targetWidth: 0.7,
+      targetHeight: 0.65,
+      targetLength: 1.9,
+      rotationY: Math.PI / 2,
+      offsetY: 0.05,
+      offsetZ: 0.7,
+      fallbackMesh: cannon,
+    });
 
     pivot.lookAt(new THREE.Vector3(x * 2, 0, z * 2).add(this.position));
     pivot.userData.lastShotTime = 0;
