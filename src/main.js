@@ -14,6 +14,7 @@ import { createSpace } from './environment';
 import { movePlayerWithObstaclePhysics } from './obstacleNavigation';
 import { buildOccupancyMap, createGridAdapter } from './navigation/grid';
 import { FlowFieldUnitController } from './units/FlowFieldUnitController';
+import { createGameUi } from './gameUi';
 
 // --- Setup ---
 const scene = new THREE.Scene();
@@ -31,98 +32,6 @@ createSpace(scene);
 // --- Map Data ---
 const mapData = loadMap();
 const gameOptions = loadGameOptions();
-
-// --- UI Setup ---
-const healthContainer = document.createElement('div');
-healthContainer.id = 'health-container';
-const healthBar = document.createElement('div');
-healthBar.id = 'health-bar';
-healthContainer.appendChild(healthBar);
-document.body.appendChild(healthContainer);
-
-const upgradeMenu = document.createElement('div');
-upgradeMenu.id = 'upgrade-menu';
-upgradeMenu.innerHTML = `
-  <h2>Ship Menu</h2>
-  <div id="stats">Dist: 0m</div>
-  <div id="upgrade-buttons">
-    <button id="up-cannons" class="upgrade-btn">Add Cannons (+2)</button>
-    <button id="up-speed" class="upgrade-btn">Upgrade Speed</button>
-    <button id="up-tier2" class="upgrade-btn">Evolution: Tier 2</button>
-  </div>
-  <div id="compass-container" style="display: none;">
-    <div id="base-arrow"></div>
-    <div id="compass-label">BASE SIGNAL</div>
-  </div>
-`;
-document.body.appendChild(upgradeMenu);
-
-const baseUpgradeMenu = document.createElement('div');
-baseUpgradeMenu.id = 'base-upgrade-menu';
-baseUpgradeMenu.innerHTML = `
-  <h2>Base Upgrades</h2>
-  <div id="base-upgrade-buttons">
-    <button id="base-up-cannons" class="upgrade-btn">Add Base Cannons (+1)</button>
-    <button id="base-up-spawn" class="upgrade-btn">Upgrade Spawn Rate</button>
-  </div>
-  <h2>Module Upgrades</h2>
-  <div id="module-upgrade-buttons">
-    <button id="base-up-shield" class="upgrade-btn">Buy Shield Module</button>
-    <button id="base-up-yamato" class="upgrade-btn">Buy Yamato Cannon</button>
-  </div>
-`;
-document.body.appendChild(baseUpgradeMenu);
-
-const moduleBar = document.createElement('div');
-moduleBar.id = 'module-bar';
-moduleBar.style.display = 'none';
-document.body.appendChild(moduleBar);
-
-const upBtns = document.getElementById('upgrade-buttons');
-const compCont = document.getElementById('compass-container');
-const baseArrow = document.getElementById('base-arrow');
-
-const respawnUI = document.createElement('div');
-respawnUI.id = 'respawn-ui';
-respawnUI.style.cssText = `
-  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-  color: #ff0055; font-size: 2rem; text-transform: uppercase; letter-spacing: 5px;
-  display: none; text-align: center; font-weight: bold;
-  text-shadow: 0 0 20px #ff0055;
-`;
-document.body.appendChild(respawnUI);
-
-// --- ESC Menu ---
-const escMenu = document.createElement('div');
-escMenu.id = 'esc-menu';
-escMenu.innerHTML = `
-  <h1>Paused</h1>
-  <div id="main-menu-content">
-    <button id="resume-btn" class="menu-btn">Resume</button>
-    <button id="restart-btn" class="menu-btn">Restart</button>
-    <button id="options-btn" class="menu-btn">Options</button>
-  </div>
-  <div id="options-menu">
-    <h2>Basic Options</h2>
-    <div class="option-row">
-      <span>Bloom Intensity</span>
-      <input type="range" id="bloom-range" min="0" max="3" step="0.1" value="1.5">
-    </div>
-    <div class="option-row">
-      <span>Ambient Light</span>
-      <input type="range" id="ambient-range" min="0" max="1" step="0.05" value="0.2">
-    </div>
-    <button id="back-btn" class="menu-btn">Back</button>
-  </div>
-`;
-document.body.appendChild(escMenu);
-
-const resumeBtn = document.getElementById('resume-btn');
-const restartBtn = document.getElementById('restart-btn');
-const optionsBtn = document.getElementById('options-btn');
-const backBtn = document.getElementById('back-btn');
-const mainMenuContent = document.getElementById('main-menu-content');
-const optionsMenu = document.getElementById('options-menu');
 
 // --- Post-Processing ---
 const renderScene = new RenderPass(scene, camera);
@@ -171,31 +80,8 @@ let cameraZoom = CAMERA_MAX_ZOOM;
 
 function togglePause() {
   isPaused = !isPaused;
-  escMenu.style.display = isPaused ? 'flex' : 'none';
-  if (!isPaused) {
-    optionsMenu.style.display = 'none';
-    mainMenuContent.style.display = 'flex';
-  }
+  ui.setPaused(isPaused);
 }
-
-resumeBtn.onclick = togglePause;
-restartBtn.onclick = () => window.location.reload();
-optionsBtn.onclick = () => {
-  mainMenuContent.style.display = 'none';
-  optionsMenu.style.display = 'flex';
-};
-backBtn.onclick = () => {
-  optionsMenu.style.display = 'none';
-  mainMenuContent.style.display = 'flex';
-};
-
-document.getElementById('bloom-range').oninput = (e) => bloomPass.strength = parseFloat(e.target.value);
-document.getElementById('ambient-range').oninput = (e) => ambientLight.intensity = parseFloat(e.target.value);
-
-// --- Debug UI ---
-const debugInfo = document.createElement('div');
-debugInfo.id = 'debug-info';
-document.body.appendChild(debugInfo);
 
 // --- Objects ---
 const player = new THREE.Group();
@@ -341,12 +227,50 @@ const shieldMesh = new THREE.Mesh(shieldGeo, shieldMat);
 shieldMesh.visible = false;
 player.add(shieldMesh);
 
+const ui = createGameUi({
+  onResume: togglePause,
+  onRestart: () => window.location.reload(),
+  onBloomInput: (value) => {
+    bloomPass.strength = value;
+  },
+  onAmbientInput: (value) => {
+    ambientLight.intensity = value;
+  },
+  onUpgradeCannons: () => addCannons(2),
+  onUpgradeSpeed: () => {
+    acceleration += 0.0025;
+    rotationSpeed += 0.0025;
+  },
+  onUpgradeTier2: () => {
+    if (currentTier < 2) {
+      currentTier = 2;
+      player.scale.set(1.5, 1.5, 1.5);
+      setPlayerAppearance(0x00ffff, playerBaseEmissiveIntensity);
+      ui.setTier2ButtonLabel('Evolution: Maxed');
+    }
+  },
+  onBuyShield: () => {
+    if (hasShieldModule) return;
+    hasShieldModule = true;
+    addPurchasedModule('shield', 'S', 'Shield', activateShieldModule, SHIELD_COOLDOWN_MS);
+    ui.hideShieldUpgrade();
+  },
+  onBuyYamato: () => {
+    if (hasYamatoModule) return;
+    hasYamatoModule = true;
+    addPurchasedModule('yamato', 'Y', 'Yamato', activateYamatoModule, YAMATO_COOLDOWN_MS);
+    ui.hideYamatoUpgrade();
+  },
+  onBaseUpgradeCannons: () => activeFriendlyBase.addCannon(),
+  onBaseUpgradeSpawn: () => activeFriendlyBase.upgradeSpawnRate(),
+});
+
 function getAbilityTargets() {
   return [...enemies, ...(enemyBase.owner === 'enemy' ? [enemyBase] : [])];
 }
 
 function updateModuleBarVisibility() {
-  moduleBar.style.display = purchasedModules.length > 0 && !isDead ? 'flex' : 'none';
+  ui.moduleBar.style.display = purchasedModules.length > 0 && !isDead ? 'flex' : 'none';
 }
 
 function getPurchasedModule(id) {
@@ -474,7 +398,7 @@ function addPurchasedModule(id, icon, label, activate, cooldownMs) {
 
   const slot = button.querySelector('.module-slot');
   button.addEventListener('click', activate);
-  moduleBar.appendChild(button);
+  ui.moduleBar.appendChild(button);
   purchasedModules.push({ id, button, slot, label, activate, cooldownMs, lastUsedAt: -Infinity });
   updateModuleBarVisibility();
   refreshModuleButtons();
@@ -648,32 +572,6 @@ gridHelper.material.transparent = true;
 gridHelper.material.opacity = 0.2;
 scene.add(gridHelper);
 
-// --- Upgrade Listeners ---
-document.getElementById('up-cannons').onclick = () => addCannons(2);
-document.getElementById('up-speed').onclick = () => { acceleration += 0.0025; rotationSpeed += 0.0025; };
-document.getElementById('up-tier2').onclick = () => {
-  if (currentTier < 2) {
-    currentTier = 2;
-    player.scale.set(1.5, 1.5, 1.5);
-    setPlayerAppearance(0x00ffff, playerBaseEmissiveIntensity);
-    document.getElementById('up-tier2').innerText = "Evolution: Maxed";
-  }
-};
-
-document.getElementById('base-up-shield').onclick = () => {
-  if (hasShieldModule) return;
-  hasShieldModule = true;
-  addPurchasedModule('shield', 'S', 'Shield', activateShieldModule, SHIELD_COOLDOWN_MS);
-  document.getElementById('base-up-shield').style.display = 'none';
-};
-
-document.getElementById('base-up-yamato').onclick = () => {
-  if (hasYamatoModule) return;
-  hasYamatoModule = true;
-  addPurchasedModule('yamato', 'Y', 'Yamato', activateYamatoModule, YAMATO_COOLDOWN_MS);
-  document.getElementById('base-up-yamato').style.display = 'none';
-};
-
 // --- Loop Variables ---
 const enemies = enemyController.targets;
 const projectiles = [];
@@ -682,9 +580,6 @@ let velocity = new THREE.Vector3();
 const keys = { w: false, a: false, s: false, d: false };
 const targetCameraPos = new THREE.Vector3();
 let activeFriendlyBase = base;
-
-document.getElementById('base-up-cannons').onclick = () => activeFriendlyBase.addCannon();
-document.getElementById('base-up-spawn').onclick = () => activeFriendlyBase.upgradeSpawnRate();
 
 // --- Event Listeners ---
 window.addEventListener('keydown', (e) => { 
@@ -698,7 +593,7 @@ window.addEventListener('keydown', (e) => {
   }
   if (e.key === 'F2') {
     isDebugMode = !isDebugMode;
-    debugInfo.style.display = isDebugMode ? 'block' : 'none';
+    ui.setDebugVisible(isDebugMode);
     playerRangeMesh.visible = isDebugMode;
     base.setDebugVisible(isDebugMode);
     enemyBase.setDebugVisible(isDebugMode);
@@ -765,7 +660,7 @@ function triggerDeath() {
   clearSelectedModule();
   updateModuleBarVisibility();
   respawnTimer = 10;
-  respawnUI.style.display = 'block';
+  ui.setRespawnVisible(true);
   velocity.set(0, 0, 0);
 }
 
@@ -774,7 +669,7 @@ function respawn() {
   playerHealth = maxPlayerHealth;
   player.visible = true;
   player.position.copy(basePosition);
-  respawnUI.style.display = 'none';
+  ui.setRespawnVisible(false);
   updateModuleBarVisibility();
   refreshModuleButtons();
 }
@@ -799,7 +694,7 @@ function animate() {
     playerRangeMesh.position.copy(player.position);
     playerRangeMesh.position.y = -0.4;
     const fps = Math.round(1 / (deltaTime || 0.01));
-    debugInfo.innerText = 
+    ui.setDebugText(
 `[DEBUG MODE]
 FPS: ${fps}
 POS: X:${player.position.x.toFixed(2)} Y:${player.position.y.toFixed(2)} Z:${player.position.z.toFixed(2)}
@@ -808,7 +703,8 @@ HP: ${playerHealth.toFixed(1)} / ${maxPlayerHealth}
 ENEMIES: ${enemies.length}
 PROJECTILES: ${projectiles.length}
 PROBES: ${probes.length}
-WAVE: ${waveManager.waveLevel}`;
+WAVE: ${waveManager.waveLevel}`
+    );
   }
 
   if (!isDead) {
@@ -852,7 +748,7 @@ WAVE: ${waveManager.waveLevel}`;
     }
   } else {
     respawnTimer -= deltaTime;
-    respawnUI.innerText = `RESPAWNING IN ${Math.ceil(respawnTimer)}`;
+    ui.setRespawnText(`RESPAWNING IN ${Math.ceil(respawnTimer)}`);
     if (respawnTimer <= 0) respawn();
   }
 
@@ -897,18 +793,14 @@ WAVE: ${waveManager.waveLevel}`;
   const canUseUpgradeMenus = !isDead && (isNearBase || isDebugMode);
 
   if (canUseUpgradeMenus) {
-    upBtns.style.display = 'block';
-    baseUpgradeMenu.style.display = 'flex';
-    compCont.style.display = 'none';
+    ui.setUpgradeMenusVisible(true);
     if (isNearBase) {
       playerHealth = Math.min(maxPlayerHealth, playerHealth + (gameOptions.base.healingRate * deltaTime));
     }
   } else {
-    upBtns.style.display = 'none';
-    baseUpgradeMenu.style.display = 'none';
-    compCont.style.display = 'flex';
+    ui.setUpgradeMenusVisible(false);
     const screenAngle = Math.atan2(basePosition.x - player.position.x, player.position.z - basePosition.z);
-    baseArrow.style.transform = `rotate(${screenAngle}rad)`;
+    ui.setCompassAngle(screenAngle);
   }
 
   for (let i = probes.length - 1; i >= 0; i--) {
@@ -917,9 +809,9 @@ WAVE: ${waveManager.waveLevel}`;
   }
 
   const healthPercent = (playerHealth / maxPlayerHealth) * 100;
-  healthBar.style.width = `${healthPercent}%`;
+  ui.setHealthPercent(healthPercent);
   const distPushed = Math.max(0, Math.floor(Math.abs(player.position.z - mapData.basePosition.z)));
-  document.getElementById('stats').innerText = `Dist: ${distPushed}m | Zone: ${waveManager.waveLevel}`;
+  ui.setStatsText(`Dist: ${distPushed}m | Zone: ${waveManager.waveLevel}`);
 
   enemyController.update(
     deltaTime,
