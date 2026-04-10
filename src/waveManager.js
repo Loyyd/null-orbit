@@ -43,18 +43,18 @@ export class WaveManager {
       playerPos.z - (this.waveOptions.spawnDistanceBehindPlayer ?? 80)
     );
 
-    const spawnColossus = Math.random() < (
+    const spawnPulsar = Math.random() < (
       (this.waveOptions.pulsarChanceBase ?? 0.1) +
       (this.waveLevel * (this.waveOptions.pulsarChancePerWave ?? 0.05))
     );
-    const starshipStartWave = this.waveOptions.starshipStartWave ?? 5;
-    const starshipWaveInterval = this.waveOptions.starshipWaveInterval ?? 5;
-    const spawnStarship = this.waveLevel >= starshipStartWave
-      && ((this.waveLevel - starshipStartWave) % starshipWaveInterval === 0);
+    const colossusStartWave = this.waveOptions.colossusStartWave ?? this.waveOptions.starshipStartWave ?? 5;
+    const colossusWaveInterval = this.waveOptions.colossusWaveInterval ?? this.waveOptions.starshipWaveInterval ?? 5;
+    const spawnColossus = this.waveLevel >= colossusStartWave
+      && ((this.waveLevel - colossusStartWave) % colossusWaveInterval === 0);
 
     for (let i = 0; i < squadSize; i++) {
-      const isStarship = spawnStarship && i === 0;
-      const isColossus = !isStarship && spawnColossus && i === 0;
+      const isColossus = spawnColossus && i === 0;
+      const isPulsar = !isColossus && spawnPulsar && i === 0;
       
       const offset = new THREE.Vector3(
         (Math.random() - 0.5) * (this.waveOptions.squadSpread ?? 15),
@@ -62,7 +62,7 @@ export class WaveManager {
         (Math.random() - 0.5) * (this.waveOptions.squadSpread ?? 15)
       );
       
-      const type = isStarship ? 'starship' : isColossus ? 'colossus' : 'spark';
+      const type = isColossus ? 'colossus' : isPulsar ? 'pulsar' : 'spark';
       enemyController.spawn(squadCenter.clone().add(offset), type, this.waveLevel);
     }
   }

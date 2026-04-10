@@ -3,9 +3,7 @@ import * as THREE from 'three';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
-import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { VignetteShader } from 'three/examples/jsm/shaders/VignetteShader.js';
 import { Projectile } from './projectile';
 import { BaseStation } from './base';
 import { WaveManager } from './waveManager';
@@ -19,6 +17,7 @@ import { FlowFieldUnitController } from './units/FlowFieldUnitController';
 import { createGameUi } from './gameUi';
 import { createPlayerAbilities } from './playerAbilities';
 import { createShatterEffectSystem } from './shatterEffect';
+import { CombatSpatialIndex } from './combatSpatialIndex';
 
 // --- Setup ---
 const scene = new THREE.Scene();
@@ -29,9 +28,9 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 3.35;
+renderer.toneMappingExposure = 0.6;
 renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.shadowMap.type = THREE.PCFShadowMap;
 document.body.appendChild(renderer.domElement);
 
 // --- Environment ---
@@ -44,13 +43,9 @@ const gameOptions = loadGameOptions();
 // --- Post-Processing ---
 const renderScene = new RenderPass(scene, camera);
 const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.82, 0.66, 0.68);
-const vignettePass = new ShaderPass(VignetteShader);
-vignettePass.uniforms.offset.value = 0.15;
-vignettePass.uniforms.darkness.value = 0.03;
 const composer = new EffectComposer(renderer);
 composer.addPass(renderScene);
 composer.addPass(bloomPass);
-composer.addPass(vignettePass);
 
 // --- Lighting ---
 const ambientLight = new THREE.AmbientLight(0xd8eaff, 1.34);
@@ -75,7 +70,8 @@ rimLight.position.set(-68, 42, -90);
 scene.add(rimLight);
 const gltfLoader = new GLTFLoader();
 // --- Game State ---
-const clock = new THREE.Clock();
+const timer = new THREE.Timer();
+timer.connect(document);
 const SHIELD_COOLDOWN_MS = gameOptions.modules.shieldCooldownMs;
 const YAMATO_COOLDOWN_MS = gameOptions.modules.yamatoCooldownMs;
 const CAMERA_BASE_HEIGHT = 35;
@@ -89,7 +85,7 @@ const RAPID_FIRE_PRE_TIER_MAX = 3;
 const RAPID_FIRE_POST_TIER_MAX = 6;
 const ACCELERATION_PRE_TIER_MAX = 1;
 const ACCELERATION_POST_TIER_MAX = 4;
-const THRUSTER_ACCELERATION_UPGRADE_STEP = 0.001;
+const THRUSTER_ACCELERATION_UPGRADE_STEP = 0.0005;
 const THRUSTER_ROTATION_UPGRADE_STEP = 0.001;
 const THRUSTER_TURNING_BONUS_UPGRADE_STEP = 0.0006;
 let activeFriendlyBase = null;
@@ -125,6 +121,10 @@ const CAMERA_SHAKE_DURATION = 1;
 const raycaster = new THREE.Raycaster();
 const pointer = new THREE.Vector2();
 const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+const FORWARD_VECTOR = new THREE.Vector3(0, 0, -1);
+const debugSpawnPosition = new THREE.Vector3();
+const pointerTargetPoint = new THREE.Vector3();
+const playerMoveDirection = new THREE.Vector3();
 
 function togglePause() {
   gameState.isPaused = !gameState.isPaused;
@@ -391,13 +391,13 @@ const ui = createGameUi({
   onDebugSkipWave: () => {
     waveManager.skipWave();
   },
-  onDebugSpawnStarship: () => {
-    const spawnPosition = new THREE.Vector3(
+  onDebugSpawnColossus: () => {
+    debugSpawnPosition.set(
       player.position.x + ((Math.random() - 0.5) * 24),
       0,
       player.position.z - 72
     );
-    enemyController.spawn(spawnPosition, 'starship', waveManager.waveLevel);
+    enemyController.spawn(debugSpawnPosition, 'colossus', waveManager.waveLevel);
   },
   onUpgradeCannons: () => {
     if (!canUpgradeRapidFire()) return;
@@ -585,15 +585,15 @@ const enemyController = new FlowFieldUnitController(scene, occupancyMap, navigat
   enemyConfig: gameOptions.enemy,
   onEnemyDestroyed: ({ position, type }) => {
     if (position) {
-      const isStarship = type === 'starship';
-      const isColossusClass = type === 'colossus' || type === 'miniColossus';
+      const isColossusClass = type === 'colossus';
+      const isPulsarClass = type === 'pulsar' || type === 'miniPulsar';
       shatterEffects.spawn(position, {
-        size: isStarship ? 5.1 : isColossusClass ? 3.2 : 1.55,
+        size: isColossusClass ? 5.1 : isPulsarClass ? 3.2 : 1.55,
         color: 0xffffff,
-        segmentCount: isStarship ? 5 : isColossusClass ? 4 : 3,
-        duration: isStarship ? 1.45 : isColossusClass ? 1.2 : 1,
-        spread: isStarship ? 7.2 : isColossusClass ? 5.8 : 4.6,
-        lift: isStarship ? 1.1 : isColossusClass ? 0.9 : 0.65,
+        segmentCount: isColossusClass ? 5 : isPulsarClass ? 4 : 3,
+        duration: isColossusClass ? 1.45 : isPulsarClass ? 1.2 : 1,
+        spread: isColossusClass ? 7.2 : isPulsarClass ? 5.8 : 4.6,
+        lift: isColossusClass ? 1.1 : isPulsarClass ? 0.9 : 0.65,
       });
     }
     playerState.plasmaCells += 10;
@@ -607,12 +607,75 @@ const bombs = [];
 const bombGeo = new THREE.SphereGeometry(1, 16, 16);
 const bombMat = new THREE.MeshStandardMaterial({ color: 0xff0000, emissive: 0xff0000, emissiveIntensity: 1 });
 let bombModelTemplate = null;
+
+function collectBombMaterials(root) {
+  const materials = [];
+  root.traverse((child) => {
+    if (!child.material) return;
+    const entries = Array.isArray(child.material) ? child.material : [child.material];
+    entries.forEach((material) => {
+      if (material && !materials.includes(material)) {
+        materials.push(material);
+      }
+    });
+  });
+  return materials;
+}
+
+function cloneObjectMaterials(root) {
+  root.traverse((child) => {
+    if (!child.material) return;
+    if (Array.isArray(child.material)) {
+      child.material = child.material.map((material) => material?.clone?.() ?? material);
+      return;
+    }
+    child.material = child.material.clone?.() ?? child.material;
+  });
+}
+
+function registerBombVisuals(bomb, bombModel = null) {
+  const materialStates = bomb.userData.materialStates || [];
+
+  if (bomb.userData.fallbackMesh) {
+    collectBombMaterials(bomb.userData.fallbackMesh).forEach((material) => {
+      if (materialStates.some((entry) => entry.material === material)) return;
+      materialStates.push({
+        material,
+        color: material.color?.clone?.() ?? null,
+        emissive: material.emissive?.clone?.() ?? null,
+        emissiveIntensity: material.emissiveIntensity,
+      });
+    });
+  }
+
+  if (bombModel) {
+    collectBombMaterials(bombModel).forEach((material) => {
+      if (materialStates.some((entry) => entry.material === material)) return;
+      materialStates.push({
+        material,
+        color: material.color?.clone?.() ?? null,
+        emissive: material.emissive?.clone?.() ?? null,
+        emissiveIntensity: material.emissiveIntensity,
+      });
+    });
+  }
+
+  bomb.userData.materialStates = materialStates;
+  if (bomb.userData.pulseIntervalMs === undefined) {
+    bomb.userData.pulseIntervalMs = 2600 + (Math.random() * 1400);
+  }
+  if (bomb.userData.pulsePhaseMs === undefined) {
+    bomb.userData.pulsePhaseMs = Math.random() * bomb.userData.pulseIntervalMs;
+  }
+}
+
 gltfLoader.load(
   '/models/bomb.glb',
   (gltf) => {
     bombModelTemplate = gltf.scene;
     bombs.forEach((bomb) => {
       const bombModel = bombModelTemplate.clone(true);
+      cloneObjectMaterials(bombModel);
       fitStaticModel(bombModel, {
         targetWidth: 2.5,
         targetHeight: 2.5,
@@ -621,6 +684,7 @@ gltfLoader.load(
         offsetY: -0.15,
       });
       bomb.add(bombModel);
+      registerBombVisuals(bomb, bombModel);
       if (bomb.userData.fallbackMesh) {
         bomb.userData.fallbackMesh.visible = false;
       }
@@ -635,13 +699,15 @@ if (mapData.bombs) {
   mapData.bombs.forEach(b => {
     const bomb = new THREE.Group();
     bomb.position.set(b.x, 0, b.z);
-    const fallbackMesh = new THREE.Mesh(bombGeo, bombMat);
+    const fallbackMesh = new THREE.Mesh(bombGeo, bombMat.clone());
     bomb.add(fallbackMesh);
     bomb.userData.fallbackMesh = fallbackMesh;
+    registerBombVisuals(bomb);
     scene.add(bomb);
 
     if (bombModelTemplate) {
       const bombModel = bombModelTemplate.clone(true);
+      cloneObjectMaterials(bombModel);
       fitStaticModel(bombModel, {
         targetWidth: 2.5,
         targetHeight: 2.5,
@@ -650,6 +716,7 @@ if (mapData.bombs) {
         offsetY: -0.15,
       });
       bomb.add(bombModel);
+      registerBombVisuals(bomb, bombModel);
       fallbackMesh.visible = false;
     }
 
@@ -674,6 +741,8 @@ const projectiles = [];
 const probes = [];
 const keys = { w: false, a: false, s: false, d: false };
 const targetCameraPos = new THREE.Vector3();
+const playerTargetIndex = new CombatSpatialIndex(12);
+const enemyTargetIndex = new CombatSpatialIndex(12);
 activeFriendlyBase = base;
 abilities = createPlayerAbilities({
   scene,
@@ -714,10 +783,9 @@ renderer.domElement.addEventListener('pointerdown', (event) => {
   pointer.y = -(((event.clientY - rect.top) / rect.height) * 2 - 1);
   raycaster.setFromCamera(pointer, camera);
 
-  const targetPoint = new THREE.Vector3();
-  if (!raycaster.ray.intersectPlane(groundPlane, targetPoint)) return;
-  targetPoint.y = 0;
-  abilities.fireYamatoStrike(targetPoint);
+  if (!raycaster.ray.intersectPlane(groundPlane, pointerTargetPoint)) return;
+  pointerTargetPoint.y = 0;
+  abilities.fireYamatoStrike(pointerTargetPoint);
 });
 renderer.domElement.addEventListener('wheel', (event) => {
   event.preventDefault();
@@ -795,6 +863,41 @@ function updateShatterEffects(deltaTime) {
   shatterEffects.update(deltaTime);
 }
 
+function updateBombPulse(time) {
+  const pulseColor = new THREE.Color(0xff2a2a);
+  const pulseEmissive = new THREE.Color(0xff0000);
+
+  for (let index = 0; index < bombs.length; index++) {
+    const bomb = bombs[index];
+    const intervalMs = bomb.userData.pulseIntervalMs || 3000;
+    const phaseMs = bomb.userData.pulsePhaseMs || 0;
+    const pulseProgress = ((time + phaseMs) % intervalMs) / intervalMs;
+    // Keep the warning flash brief: fast rise, quick fall, then a long calm period.
+    const pulseStrength = pulseProgress < 0.18
+      ? Math.sin((pulseProgress / 0.18) * Math.PI)
+      : 0;
+    const fallbackScale = 1 + (pulseStrength * 0.06);
+    bomb.userData.fallbackMesh?.scale.setScalar(fallbackScale);
+    const materialStates = bomb.userData.materialStates || [];
+    for (let materialIndex = 0; materialIndex < materialStates.length; materialIndex++) {
+      const state = materialStates[materialIndex];
+      const { material } = state;
+
+      if (state.color && material.color) {
+        material.color.copy(state.color).lerp(pulseColor, pulseStrength * 0.45);
+      }
+
+      if (state.emissive && material.emissive) {
+        material.emissive.copy(state.emissive).lerp(pulseEmissive, pulseStrength * 0.7);
+      }
+
+      if (material.emissiveIntensity !== undefined) {
+        material.emissiveIntensity = (state.emissiveIntensity ?? 0) + (pulseStrength * 0.9);
+      }
+    }
+  }
+}
+
 function updateDebugOverlay(deltaTime) {
   if (!gameState.isDebugMode) return;
 
@@ -818,7 +921,7 @@ function updatePlayerMovement(deltaTime) {
   if (keys.a) player.rotation.y += playerState.rotationSpeed * deltaTime * 60;
   if (keys.d) player.rotation.y -= playerState.rotationSpeed * deltaTime * 60;
 
-  const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion);
+  const dir = playerMoveDirection.copy(FORWARD_VECTOR).applyQuaternion(player.quaternion);
   if (keys.w) playerState.velocity.addScaledVector(dir, playerState.acceleration * deltaTime * 60);
   if (keys.s) playerState.velocity.addScaledVector(dir, -playerState.acceleration * deltaTime * 60);
 
@@ -873,12 +976,16 @@ function buildCombatState(deltaTime) {
   const enemyOwnedBases = allBases.filter((station) => station.owner === 'enemy');
   const playerTargets = [...enemies, ...enemyOwnedBases];
   const enemyTargets = [playerTarget, ...probes, ...playerOwnedBases];
+  playerTargetIndex.rebuild(playerTargets);
+  enemyTargetIndex.rebuild(enemyTargets);
 
   return {
     allBases,
     playerOwnedBases,
     playerTargets,
     enemyTargets,
+    playerTargetIndex,
+    enemyTargetIndex,
   };
 }
 
@@ -931,9 +1038,9 @@ function updateBaseUiAndHealing(isNearBase, deltaTime) {
   ui.setCompassAngle(screenAngle);
 }
 
-function updateProbes(deltaTime) {
+function updateProbes(deltaTime, probeTargets) {
   for (let i = probes.length - 1; i >= 0; i--) {
-    probes[i].update(enemies, projectiles, camera, deltaTime, []);
+    probes[i].update(probeTargets, projectiles, camera, deltaTime, []);
     if (probes[i].isDead) probes.splice(i, 1);
   }
 }
@@ -991,23 +1098,26 @@ function updateCamera() {
   camera.lookAt(player.position);
 }
 
-function animate() {
+function animate(timestamp) {
   requestAnimationFrame(animate);
 
   if (gameState.isPaused) {
     composer.render();
     return;
   }
-  
-  const deltaTime = clock.getDelta();
-  const time = clock.elapsedTime * 1000;
+
+  timer.update(timestamp);
+  const deltaTime = timer.getDelta();
+  const elapsedTime = timer.getElapsed();
+  const time = elapsedTime * 1000;
   if (gameState.cameraShakeTime > 0) {
     gameState.cameraShakeTime = Math.max(0, gameState.cameraShakeTime - deltaTime);
   }
   abilities.refreshButtons();
-  space.update?.(deltaTime, clock.elapsedTime);
+  space.update?.(deltaTime, elapsedTime);
   updateRockSpinners(deltaTime);
   updateShatterEffects(deltaTime);
+  updateBombPulse(time);
   updateDebugOverlay(deltaTime);
 
   if (!playerState.isDead) {
@@ -1018,15 +1128,15 @@ function animate() {
     updateRespawnTimer(deltaTime);
   }
 
-  const { allBases, playerOwnedBases, playerTargets, enemyTargets } = buildCombatState(deltaTime);
-  updateCannons(time, playerTargets);
-  const isNearBase = updateBases(time, allBases, playerOwnedBases, playerTargets, enemyTargets);
+  const { allBases, playerOwnedBases, playerTargets, enemyTargets, playerTargetIndex, enemyTargetIndex } = buildCombatState(deltaTime);
+  updateCannons(time, playerTargetIndex);
+  const isNearBase = updateBases(time, allBases, playerOwnedBases, playerTargetIndex, enemyTargetIndex);
   updateBaseUiAndHealing(isNearBase, deltaTime);
-  updateProbes(deltaTime);
+  updateProbes(deltaTime, playerTargetIndex);
   updateHud();
   updateEnemies(deltaTime, enemyTargets);
   updateYamatoEffects(deltaTime);
-  updateProjectiles(deltaTime, playerTargets, enemyTargets);
+  updateProjectiles(deltaTime, playerTargetIndex, enemyTargetIndex);
   updateCamera();
   composer.render();
 }

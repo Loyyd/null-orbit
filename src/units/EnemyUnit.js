@@ -1,6 +1,9 @@
 import * as THREE from 'three';
 import { Unit } from './Unit';
 import { attachSharedModel } from '../sharedShipModel';
+
+const AIM_DOT_THRESHOLD = 0.9995;
+
 export class EnemyUnit extends Unit {
   constructor(scene, spawnPosition, config) {
     super(scene, spawnPosition, {
@@ -16,6 +19,13 @@ export class EnemyUnit extends Unit {
     this.idleDriftAmplitude = config.idleDriftAmplitude || 0.01;
     this.cannonOffsets = config.cannonOffsets;
     this.defaultLookRotationY = Math.PI;
+    this.targetDirection = new THREE.Vector3();
+    this.lookTarget = new THREE.Vector3();
+    this.worldPosition = new THREE.Vector3();
+    this.shotDirection = new THREE.Vector3();
+    this.idleDirection = new THREE.Vector3();
+    this.aimDirection = new THREE.Vector3(0, 0, -1);
+    this.hasAimDirection = false;
 
     this.bodyMesh = new THREE.Group();
     this.mesh.add(this.bodyMesh);
@@ -87,40 +97,66 @@ export class EnemyUnit extends Unit {
 
     if (target && minDist < this.aggroRange) {
       const targetPos = target.position;
-      const desiredDir = new THREE.Vector3().subVectors(targetPos, this.mesh.position).normalize();
+      const desiredDir = this.targetDirection.subVectors(targetPos, this.mesh.position).normalize();
       const moveDelta = this.moveWithObstacles(desiredDir, deltaTime, obstacles, targetPos);
       if (moveDelta.lengthSq() > 0.000001) {
-        this.mesh.lookAt(this.mesh.position.clone().add(moveDelta));
+        this.updateAimFromDirection(moveDelta);
       } else {
-        this.mesh.lookAt(targetPos);
+        this.updateAimTowardPosition(targetPos);
       }
 
       const currentTime = performance.now();
       if (currentTime - this.lastShotTime > this.shootInterval) {
         this.cannons.forEach((cannon) => {
-          const worldPos = new THREE.Vector3();
-          cannon.getWorldPosition(worldPos);
-          const shotDir = new THREE.Vector3().subVectors(targetPos, worldPos).normalize();
-          this.fireProjectile(projectiles, worldPos, shotDir);
+          cannon.getWorldPosition(this.worldPosition);
+          const shotDir = this.shotDirection.subVectors(targetPos, this.worldPosition).normalize();
+          this.fireProjectile(projectiles, this.worldPosition, shotDir);
         });
         this.lastShotTime = currentTime;
       }
     } else {
-      const idleDir = new THREE.Vector3(
+      const idleDir = this.idleDirection.set(
         Math.sin(Date.now() * 0.001) * this.idleDriftAmplitude * 20,
         0,
         this.idleSpeedMultiplier
       ).normalize();
       const moveDelta = this.moveWithObstacles(idleDir, deltaTime, obstacles);
       if (moveDelta.lengthSq() > 0.000001) {
-        this.mesh.lookAt(this.mesh.position.clone().add(moveDelta));
+        this.updateAimFromDirection(moveDelta);
       } else {
-        this.mesh.rotation.y = this.defaultLookRotationY;
+        if (this.hasAimDirection) {
+          this.mesh.rotation.y = this.defaultLookRotationY;
+          this.hasAimDirection = false;
+        }
       }
     }
 
     if (Math.abs(this.mesh.position.z - (playerTarget.mesh ? playerTarget.mesh.position.z : 0)) > this.boundsLimit) {
       this.die();
     }
+  }
+
+  updateAimTowardPosition(targetPosition) {
+    this.targetDirection.subVectors(targetPosition, this.mesh.position).normalize();
+    this.updateAimFromNormalizedDirection(this.targetDirection, targetPosition);
+  }
+
+  updateAimFromDirection(direction) {
+    this.targetDirection.copy(direction).normalize();
+    this.lookTarget.copy(this.mesh.position).add(this.targetDirection);
+    this.updateAimFromNormalizedDirection(this.targetDirection, this.lookTarget);
+  }
+
+  updateAimFromNormalizedDirection(direction, lookTarget) {
+    if (
+      this.hasAimDirection &&
+      this.aimDirection.dot(direction) >= AIM_DOT_THRESHOLD
+    ) {
+      return;
+    }
+
+    this.mesh.lookAt(lookTarget);
+    this.aimDirection.copy(direction);
+    this.hasAimDirection = true;
   }
 }

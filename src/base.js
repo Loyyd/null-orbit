@@ -27,6 +27,10 @@ const TEAM_CONFIG = {
 
 const MAX_BASE_CANNON_UPGRADES = 5;
 const MAX_BASE_SPAWN_UPGRADES = 5;
+const WORLD_UP = new THREE.Vector3(0, 1, 0);
+const LEFT_PROBE_SPAWN_OFFSET = new THREE.Vector3(-2, 0, -8);
+const RIGHT_PROBE_SPAWN_OFFSET = new THREE.Vector3(2, 0, -8);
+const AIM_DOT_THRESHOLD = 0.9995;
 
 const gltfLoader = new GLTFLoader();
 
@@ -138,6 +142,14 @@ export class BaseStation {
     this.healthBarGroup.add(this.hpFg);
     this.healthBarOffset = new THREE.Vector3(0, 9.5, 0);
     this.scene.add(this.healthBarGroup);
+    this.cannonLookTarget = new THREE.Vector3();
+    this.beamStart = new THREE.Vector3();
+    this.beamVector = new THREE.Vector3();
+    this.beamCenter = new THREE.Vector3();
+    this.beamDirection = new THREE.Vector3();
+    this.cannonWorldPosition = new THREE.Vector3();
+    this.projectileDirection = new THREE.Vector3();
+    this.probeSpawnPosition = new THREE.Vector3();
 
     this.cannons = [];
     this.cannonGeo = new THREE.BoxGeometry(0.4, 0.4, 1.5);
@@ -267,8 +279,11 @@ export class BaseStation {
       fallbackMesh: cannon,
     });
 
-    pivot.lookAt(new THREE.Vector3(x * 2, 0, z * 2).add(this.position));
+    this.cannonLookTarget.set(x * 2, 0, z * 2).add(this.position);
+    pivot.lookAt(this.cannonLookTarget);
     pivot.userData.lastShotTime = 0;
+    pivot.userData.aimDirection = new THREE.Vector3().subVectors(this.cannonLookTarget, pivot.position).normalize();
+    pivot.userData.hasAimDirection = true;
 
     this.mesh.add(pivot);
     this.cannons.push(pivot);
@@ -376,15 +391,14 @@ export class BaseStation {
 
     if (isHealing) {
       this.healingBeam.visible = true;
-      const startPos = this.position.clone();
-      startPos.y += 6;
-      const endPos = playerPos.clone();
-      const beamVec = new THREE.Vector3().subVectors(endPos, startPos);
-      const beamLen = beamVec.length();
+      this.beamStart.copy(this.position);
+      this.beamStart.y += 6;
+      const beamLen = this.beamVector.subVectors(playerPos, this.beamStart).length();
       this.healingBeam.scale.y = beamLen;
-      const center = startPos.clone().add(beamVec.clone().multiplyScalar(0.5));
-      this.healingBeam.position.copy(center);
-      this.healingBeam.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), beamVec.clone().normalize());
+      this.beamCenter.copy(this.beamStart).addScaledVector(this.beamVector, 0.5);
+      this.healingBeam.position.copy(this.beamCenter);
+      this.beamDirection.copy(this.beamVector).normalize();
+      this.healingBeam.quaternion.setFromUnitVectors(WORLD_UP, this.beamDirection);
       this.healingBeam.material.emissiveIntensity = 0.2 + Math.sin(currentTime * 0.005) * 0.1;
       this.healingBeam.material.opacity = 0.2 + Math.sin(currentTime * 0.005) * 0.05;
     } else {
@@ -392,40 +406,65 @@ export class BaseStation {
     }
 
     if (this.cannons.length > 0) {
-      const validTargets = targets.filter((target) => !target.isDead);
       const config = TEAM_CONFIG[this.owner];
 
       this.cannons.forEach((cannon) => {
         if (currentTime - (cannon.userData.lastShotTime || 0) < this.fireRate) return;
 
-        const worldPos = new THREE.Vector3();
-        cannon.getWorldPosition(worldPos);
-        let nearestTarget = null;
-        let nearestDistance = this.fireRange;
-
-        for (const target of validTargets) {
-          const distToTarget = worldPos.distanceTo(target.mesh.position);
-          if (distToTarget < nearestDistance) {
-            nearestDistance = distToTarget;
-            nearestTarget = target;
-          }
-        }
+        cannon.getWorldPosition(this.cannonWorldPosition);
+        const nearestTarget = Array.isArray(targets)
+          ? this.findNearestTargetFromArray(targets)
+          : targets?.findNearest?.(this.cannonWorldPosition, this.fireRange) ?? null;
 
         if (!nearestTarget) return;
 
-        const dir = new THREE.Vector3().subVectors(nearestTarget.mesh.position, worldPos).normalize();
-        cannon.lookAt(nearestTarget.mesh.position);
-        projectiles.push(new Projectile(this.scene, worldPos, dir, config.projectileColor, !isPlayerOwned, 2, this.fireRange * 2));
+        const dir = this.projectileDirection
+          .subVectors(nearestTarget.mesh.position, this.cannonWorldPosition)
+          .normalize();
+        this.updateCannonAim(cannon, nearestTarget.mesh.position, dir);
+        projectiles.push(Projectile.spawn(this.scene, this.cannonWorldPosition, dir, config.projectileColor, !isPlayerOwned, 2, this.fireRange * 2));
         cannon.userData.lastShotTime = currentTime;
       });
     }
 
     if (isPlayerOwned && currentTime - this.lastSpawnTime > this.spawnInterval) {
-      probes.push(new Probe(this.scene, this.position.clone().add(new THREE.Vector3(-2, 0, -8)), this.probeConfig));
-      probes.push(new Probe(this.scene, this.position.clone().add(new THREE.Vector3(2, 0, -8)), this.probeConfig));
+      this.probeSpawnPosition.copy(this.position).add(LEFT_PROBE_SPAWN_OFFSET);
+      probes.push(new Probe(this.scene, this.probeSpawnPosition, this.probeConfig));
+      this.probeSpawnPosition.copy(this.position).add(RIGHT_PROBE_SPAWN_OFFSET);
+      probes.push(new Probe(this.scene, this.probeSpawnPosition, this.probeConfig));
       this.lastSpawnTime = currentTime;
     }
 
     return inInteractionRange;
+  }
+
+  findNearestTargetFromArray(targets) {
+    let nearestTarget = null;
+    let nearestDistance = this.fireRange;
+
+    for (const target of targets) {
+      if (target.isDead) continue;
+
+      const distToTarget = this.cannonWorldPosition.distanceTo(target.mesh.position);
+      if (distToTarget < nearestDistance) {
+        nearestDistance = distToTarget;
+        nearestTarget = target;
+      }
+    }
+
+    return nearestTarget;
+  }
+
+  updateCannonAim(cannon, targetPosition, direction) {
+    if (
+      cannon.userData.hasAimDirection &&
+      cannon.userData.aimDirection.dot(direction) >= AIM_DOT_THRESHOLD
+    ) {
+      return;
+    }
+
+    cannon.lookAt(targetPosition);
+    cannon.userData.aimDirection.copy(direction);
+    cannon.userData.hasAimDirection = true;
   }
 }

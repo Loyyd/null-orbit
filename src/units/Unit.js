@@ -115,7 +115,7 @@ export class Unit {
 
   fireProjectile(projectiles, worldPos, direction) {
     projectiles.push(
-      new Projectile(
+      Projectile.spawn(
         this.scene,
         worldPos,
         direction,

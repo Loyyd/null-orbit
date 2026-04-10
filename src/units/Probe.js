@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { Unit } from './Unit';
 import { attachSharedShipModel } from '../sharedShipModel';
 
+const AIM_DOT_THRESHOLD = 0.9995;
+
 export class Probe extends Unit {
   constructor(scene, spawnPosition, configOverrides = {}) {
     super(scene, spawnPosition, {
@@ -45,6 +47,13 @@ export class Probe extends Unit {
     this.cannonMesh = new THREE.Object3D();
     this.cannonMesh.position.z = -0.6;
     this.bodyMesh.add(this.cannonMesh);
+    this.targetDirection = new THREE.Vector3();
+    this.moveDirection = new THREE.Vector3(0, 0, -1);
+    this.worldPosition = new THREE.Vector3();
+    this.lookTarget = new THREE.Vector3();
+    this.shotDirection = new THREE.Vector3();
+    this.aimDirection = new THREE.Vector3(0, 0, 1);
+    this.hasAimDirection = false;
 
     this.initializeHealthBar(1.2, 0.15, 0x0088ff, 1.2);
   }
@@ -57,51 +66,86 @@ export class Probe extends Unit {
     let nearestTarget = null;
     let minDist = this.aggroRange;
 
-    for (const target of targets) {
-      if (target.isDead) continue;
-      const dist = this.mesh.position.distanceTo(target.mesh.position);
-      if (dist < minDist) {
-        minDist = dist;
-        nearestTarget = target;
+    if (Array.isArray(targets)) {
+      for (const target of targets) {
+        if (target.isDead) continue;
+        const dist = this.mesh.position.distanceTo(target.mesh.position);
+        if (dist < minDist) {
+          minDist = dist;
+          nearestTarget = target;
+        }
+      }
+    } else if (targets?.findNearest) {
+      nearestTarget = targets.findNearest(this.mesh.position, this.aggroRange);
+      if (nearestTarget) {
+        minDist = this.mesh.position.distanceTo(nearestTarget.mesh.position);
       }
     }
 
     if (nearestTarget) {
-      const dir = new THREE.Vector3().subVectors(nearestTarget.mesh.position, this.mesh.position).normalize();
+      const dir = this.targetDirection
+        .subVectors(nearestTarget.mesh.position, this.mesh.position)
+        .normalize();
       if (minDist > 10) {
         const moveDelta = this.moveWithObstacles(dir, deltaTime, obstacles, nearestTarget.mesh.position);
         if (moveDelta.lengthSq() > 0.000001) {
-          this.mesh.lookAt(this.mesh.position.clone().add(moveDelta));
+          this.updateAimFromDirection(moveDelta);
         } else {
-          this.mesh.lookAt(nearestTarget.mesh.position);
+          this.updateAimTowardPosition(nearestTarget.mesh.position);
         }
       } else {
-        this.mesh.lookAt(nearestTarget.mesh.position);
+        this.updateAimTowardPosition(nearestTarget.mesh.position);
       }
 
       const currentTime = performance.now();
       if (currentTime - this.lastShotTime > this.shootInterval) {
-        const worldPos = new THREE.Vector3();
-        this.cannonMesh.getWorldPosition(worldPos);
-        const shotDir = dir.clone();
+        this.cannonMesh.getWorldPosition(this.worldPosition);
+        const shotDir = this.shotDirection.copy(dir);
         const scatter = 0.14;
         shotDir.x += (Math.random() - 0.5) * scatter;
         shotDir.z += (Math.random() - 0.5) * scatter;
         shotDir.normalize();
-        this.fireProjectile(projectiles, worldPos, shotDir);
+        this.fireProjectile(projectiles, this.worldPosition, shotDir);
         this.lastShotTime = currentTime;
       }
     } else {
-      const moveDelta = this.moveWithObstacles(new THREE.Vector3(0, 0, -1), deltaTime, obstacles);
+      const moveDelta = this.moveWithObstacles(this.moveDirection, deltaTime, obstacles);
       if (moveDelta.lengthSq() > 0.000001) {
-        this.mesh.lookAt(this.mesh.position.clone().add(moveDelta));
+        this.updateAimFromDirection(moveDelta);
       } else {
-        this.mesh.rotation.y = 0;
+        if (this.hasAimDirection) {
+          this.mesh.rotation.y = 0;
+          this.hasAimDirection = false;
+        }
       }
     }
 
     if (Math.abs(this.mesh.position.z) > this.boundsLimit) {
       this.die();
     }
+  }
+
+  updateAimTowardPosition(targetPosition) {
+    this.targetDirection.subVectors(targetPosition, this.mesh.position).normalize();
+    this.updateAimFromNormalizedDirection(this.targetDirection, targetPosition);
+  }
+
+  updateAimFromDirection(direction) {
+    this.targetDirection.copy(direction).normalize();
+    this.lookTarget.copy(this.mesh.position).add(this.targetDirection);
+    this.updateAimFromNormalizedDirection(this.targetDirection, this.lookTarget);
+  }
+
+  updateAimFromNormalizedDirection(direction, lookTarget) {
+    if (
+      this.hasAimDirection &&
+      this.aimDirection.dot(direction) >= AIM_DOT_THRESHOLD
+    ) {
+      return;
+    }
+
+    this.mesh.lookAt(lookTarget);
+    this.aimDirection.copy(direction);
+    this.hasAimDirection = true;
   }
 }

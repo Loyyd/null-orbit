@@ -6,25 +6,27 @@ export class Colossus extends EnemyUnit {
     super(scene, spawnPosition, {
       displayName: 'Colossus',
       type: 'colossus',
-      maxHealth: 150,
-      speed: 0.0075,
-      aggroRange: 45,
-      shootInterval: 4800,
-      damagePerShot: 25,
-      projectileColor: 0xaa00ff,
-      size: 2.5,
-      bodyColor: 0xaa00ff,
-      healthBarColor: 0xaa00ff,
-      modelPath: '/models/colossus.glb',
+      maxHealth: 400,
+      speed: 0.008,
+      aggroRange: 60,
+      shootInterval: 5200,
+      damagePerShot: 18,
+      projectileColor: 0xff5555,
+      size: 5.2,
+      bodyColor: 0xa23535,
+      healthBarColor: 0xff5555,
+      modelPath: '/models/starship.glb',
       cannonOffsets: [
-        new THREE.Vector3(-0.8, 0, -1.2),
-        new THREE.Vector3(0.8, 0, -1.2),
+        new THREE.Vector3(-1.8, 0, 2.2),
+        new THREE.Vector3(1.8, 0, 2.2),
+        new THREE.Vector3(-1.2, 0, -0.2),
+        new THREE.Vector3(1.2, 0, -0.2),
       ],
     });
   }
 
   configureForWave(waveLevel) {
-    this.maxHealth = 15 + (waveLevel * 2);
+    this.maxHealth = 400 + (waveLevel * 10);
     this.health = this.maxHealth;
     this.updateHealthBar();
   }

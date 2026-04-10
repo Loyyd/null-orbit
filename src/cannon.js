@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { Projectile } from './projectile';
 import { attachCannonModel } from './cannonModel';
 
+const AIM_DOT_THRESHOLD = 0.9995;
+
 export class Cannon {
   constructor(scene, parent, offset, config = {}) {
     this.scene = scene;
@@ -29,35 +31,34 @@ export class Cannon {
     this.damage = config.damage ?? 2;
     this.fireRate = fireRateMin + (Math.random() * Math.max(0, fireRateMax - fireRateMin));
     this.lastShotTime = 0;
+    this.worldPosition = new THREE.Vector3();
+    this.shotDirection = new THREE.Vector3();
+    this.aimDirection = new THREE.Vector3();
+    this.hasAimDirection = false;
   }
 
   update(currentTime, targets, projectiles) {
-    const worldPos = new THREE.Vector3();
-    this.mesh.getWorldPosition(worldPos);
+    this.mesh.getWorldPosition(this.worldPosition);
 
-    let nearestEnemy = null;
-    let minDist = this.range;
-
-    for (const enemy of targets) {
-      if (enemy.isDead) continue;
-      
-      const dist = worldPos.distanceTo(enemy.mesh.position);
-      if (dist < minDist) {
-        minDist = dist;
-        nearestEnemy = enemy;
-      }
-    }
+    const nearestEnemy = Array.isArray(targets)
+      ? this.findNearestFromArray(targets)
+      : targets?.findNearest?.(this.worldPosition, this.range) ?? null;
 
     if (!nearestEnemy) {
-      this.mesh.rotation.set(0, 0, 0);
+      if (this.hasAimDirection) {
+        this.mesh.rotation.set(0, 0, 0);
+        this.hasAimDirection = false;
+      }
       return;
     }
 
-    this.mesh.lookAt(nearestEnemy.mesh.position);
+    this.updateAim(nearestEnemy.mesh.position);
 
     if (currentTime - this.lastShotTime < this.fireRate) return;
 
-    const dir = new THREE.Vector3().subVectors(nearestEnemy.mesh.position, worldPos).normalize();
+    const dir = this.shotDirection
+      .subVectors(nearestEnemy.mesh.position, this.worldPosition)
+      .normalize();
 
     // Scatter effect (approx 90% precision)
     const scatter = 0.18;
@@ -65,11 +66,43 @@ export class Cannon {
     dir.z += (Math.random() - 0.5) * scatter;
     dir.normalize();
 
-    projectiles.push(new Projectile(this.scene, worldPos, dir, 0x00ffff, false, this.damage, this.range * 2));
+    projectiles.push(Projectile.spawn(this.scene, this.worldPosition, dir, 0x00ffff, false, this.damage, this.range * 2));
     this.lastShotTime = currentTime;
+  }
+
+  findNearestFromArray(targets) {
+    let nearestEnemy = null;
+    let minDist = this.range;
+
+    for (const enemy of targets) {
+      if (enemy.isDead) continue;
+
+      const dist = this.worldPosition.distanceTo(enemy.mesh.position);
+      if (dist < minDist) {
+        minDist = dist;
+        nearestEnemy = enemy;
+      }
+    }
+
+    return nearestEnemy;
   }
 
   remove() {
     this.parent.remove(this.mesh);
+  }
+
+  updateAim(targetPosition) {
+    this.shotDirection.subVectors(targetPosition, this.worldPosition).normalize();
+
+    if (
+      this.hasAimDirection &&
+      this.aimDirection.dot(this.shotDirection) >= AIM_DOT_THRESHOLD
+    ) {
+      return;
+    }
+
+    this.mesh.lookAt(targetPosition);
+    this.aimDirection.copy(this.shotDirection);
+    this.hasAimDirection = true;
   }
 }
