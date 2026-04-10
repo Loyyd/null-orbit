@@ -8,6 +8,7 @@ import {
   saveGameOptions,
   setOptionValue,
 } from './gameOptions';
+import { getAppUrl } from './paths';
 
 const sectionsEl = document.getElementById('sections');
 const statusEl = document.getElementById('status');
@@ -82,11 +83,11 @@ copyBtn.addEventListener('click', async () => {
 });
 
 openGameBtn.addEventListener('click', () => {
-  window.location.href = '/';
+  window.location.href = getAppUrl();
 });
 
 openMapBtn.addEventListener('click', () => {
-  window.location.href = '/editor.html';
+  window.location.href = getAppUrl('editor.html');
 });
 
 renderSections();

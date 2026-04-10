@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { Projectile } from '../projectile';
 import { createSharedModelInstancedRenderer } from '../sharedShipModel';
+import { getAssetPath } from '../paths';
 
 const HIT_FLASH_DURATION_MS = 80;
 
@@ -168,7 +169,7 @@ export class FlowFieldUnitController {
       targetHeight: 0.45,
       targetLength: 1.4,
       rotationY: Math.PI / 2,
-    }, '/models/player_ship.glb').then((renderer) => {
+    }, getAssetPath('models/player_ship.glb')).then((renderer) => {
       this.modelRenderers.spark = renderer;
       this.onModelRendererReady();
     }).catch((error) => {
@@ -180,7 +181,7 @@ export class FlowFieldUnitController {
       targetHeight: 1.4,
       targetLength: 2.8,
       rotationY: Math.PI / 2,
-    }, '/models/colossus.glb').then((renderer) => {
+    }, getAssetPath('models/colossus.glb')).then((renderer) => {
       this.modelRenderers.pulsar = renderer;
       this.onModelRendererReady();
     }).catch((error) => {
@@ -192,7 +193,7 @@ export class FlowFieldUnitController {
       targetHeight: 2.4,
       targetLength: 7.5,
       rotationY: -Math.PI / 2,
-    }, '/models/starship.glb').then((renderer) => {
+    }, getAssetPath('models/starship.glb')).then((renderer) => {
       this.modelRenderers.colossus = renderer;
       this.onModelRendererReady();
     }).catch((error) => {

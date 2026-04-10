@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { getAssetPath } from './paths';
 
 export function createSpace(scene) {
   const gltfLoader = new GLTFLoader();
@@ -518,7 +519,7 @@ export function createSpace(scene) {
   };
 
   addPlanet({
-    path: '/models/planet_1.glb',
+    path: getAssetPath('models/planet_1.glb'),
     position: new THREE.Vector3(140, -70, -190),
     targetSize: 220,
     rotationY: Math.PI * 0.2,
@@ -527,7 +528,7 @@ export function createSpace(scene) {
     atmosphereColor: 0x68b7ff,
   });
   addPlanet({
-    path: '/models/planet_2.glb',
+    path: getAssetPath('models/planet_2.glb'),
     position: new THREE.Vector3(-150, -85, -235),
     targetSize: 220,
     rotationY: -Math.PI * 0.15,

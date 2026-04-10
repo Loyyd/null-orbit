@@ -5,6 +5,8 @@ import speedButtonIcon from './assets/buttons/button_speed.png';
 import tierButtonIcon from './assets/buttons/button_tier.png';
 import yamatoButtonIcon from './assets/buttons/button_yamato.png';
 
+import { getAppUrl } from './paths';
+
 export function createGameUi({
   onResume,
   onRestart,
@@ -292,8 +294,8 @@ export function createGameUi({
   upgradeButtonsById['base-up-yamato'].button.onclick = onBuyYamato;
   upgradeButtonsById['base-up-cannons'].button.onclick = onBaseUpgradeCannons;
   upgradeButtonsById['base-up-spawn'].button.onclick = onBaseUpgradeSpawn;
-  elements.debugEditorLink.onclick = () => window.open('/editor.html', '_blank', 'noopener,noreferrer');
-  elements.debugOptionsLink.onclick = () => window.open('/options.html', '_blank', 'noopener,noreferrer');
+  elements.debugEditorLink.onclick = () => window.open(getAppUrl('editor.html'), '_blank', 'noopener,noreferrer');
+  elements.debugOptionsLink.onclick = () => window.open(getAppUrl('options.html'), '_blank', 'noopener,noreferrer');
   elements.debugSpawnColossusButton.onclick = onDebugSpawnColossus;
   elements.debugSkipWaveButton.onclick = onDebugSkipWave;
 

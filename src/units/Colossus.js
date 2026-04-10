@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { EnemyUnit } from './EnemyUnit';
+import { getAssetPath } from '../paths';
 
 export class Colossus extends EnemyUnit {
   constructor(scene, spawnPosition) {
@@ -15,7 +16,7 @@ export class Colossus extends EnemyUnit {
       size: 5.2,
       bodyColor: 0xa23535,
       healthBarColor: 0xff5555,
-      modelPath: '/models/starship.glb',
+      modelPath: getAssetPath('models/starship.glb'),
       cannonOffsets: [
         new THREE.Vector3(-1.8, 0, 2.2),
         new THREE.Vector3(1.8, 0, 2.2),

@@ -1,8 +1,12 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { getAssetPath } from './paths';
 
 const loader = new GLTFLoader();
 const modelTemplatePromises = new Map();
+const PLAYER_SHIP_MODEL = getAssetPath('models/player_ship.glb');
+const COLOSSUS_MODEL = getAssetPath('models/colossus.glb');
+const STARSHIP_MODEL = getAssetPath('models/starship.glb');
 
 function disposeMaterial(material) {
   if (Array.isArray(material)) {
@@ -13,9 +17,9 @@ function disposeMaterial(material) {
 }
 
 function shouldReduceUnitRoughness(modelPath) {
-  return modelPath === '/models/player_ship.glb'
-    || modelPath === '/models/colossus.glb'
-    || modelPath === '/models/starship.glb';
+  return modelPath === PLAYER_SHIP_MODEL
+    || modelPath === COLOSSUS_MODEL
+    || modelPath === STARSHIP_MODEL;
 }
 
 function tuneUnitModelMaterials(root, modelPath) {
@@ -62,7 +66,7 @@ export function fitModelToBounds(model, {
   model.position.y += scaledSize.y * 0.5 + offsetY;
 }
 
-export function loadSharedModelTemplate(modelPath = '/models/player_ship.glb') {
+export function loadSharedModelTemplate(modelPath = PLAYER_SHIP_MODEL) {
   if (!modelTemplatePromises.has(modelPath)) {
     modelTemplatePromises.set(
       modelPath,
@@ -72,7 +76,7 @@ export function loadSharedModelTemplate(modelPath = '/models/player_ship.glb') {
   return modelTemplatePromises.get(modelPath);
 }
 
-export async function cloneSharedModel(options, modelPath = '/models/player_ship.glb') {
+export async function cloneSharedModel(options, modelPath = PLAYER_SHIP_MODEL) {
   const template = await loadSharedModelTemplate(modelPath);
   const model = template.clone(true);
   tuneUnitModelMaterials(model, modelPath);
@@ -80,7 +84,7 @@ export async function cloneSharedModel(options, modelPath = '/models/player_ship
   return model;
 }
 
-export async function attachSharedModel(parent, options, modelPath = '/models/player_ship.glb', onError = null) {
+export async function attachSharedModel(parent, options, modelPath = PLAYER_SHIP_MODEL, onError = null) {
   try {
     const model = await cloneSharedModel(options, modelPath);
     parent.add(model);
@@ -92,7 +96,7 @@ export async function attachSharedModel(parent, options, modelPath = '/models/pl
   }
 }
 
-export async function createSharedModelInstancedRenderer(scene, maxCount, fitOptions, modelPath = '/models/player_ship.glb') {
+export async function createSharedModelInstancedRenderer(scene, maxCount, fitOptions, modelPath = PLAYER_SHIP_MODEL) {
   const template = await cloneSharedModel(fitOptions, modelPath);
   template.updateMatrixWorld(true);
 
@@ -125,19 +129,19 @@ export async function createSharedModelInstancedRenderer(scene, maxCount, fitOpt
 }
 
 export function loadSharedShipTemplate() {
-  return loadSharedModelTemplate('/models/player_ship.glb');
+  return loadSharedModelTemplate(PLAYER_SHIP_MODEL);
 }
 
 export async function cloneSharedShipModel(options) {
-  return cloneSharedModel(options, '/models/player_ship.glb');
+  return cloneSharedModel(options, PLAYER_SHIP_MODEL);
 }
 
 export async function attachSharedShipModel(parent, options, onError = null) {
-  return attachSharedModel(parent, options, '/models/player_ship.glb', onError);
+  return attachSharedModel(parent, options, PLAYER_SHIP_MODEL, onError);
 }
 
 export async function createSharedShipInstancedRenderer(scene, maxCount, fitOptions) {
-  return createSharedModelInstancedRenderer(scene, maxCount, fitOptions, '/models/player_ship.glb');
+  return createSharedModelInstancedRenderer(scene, maxCount, fitOptions, PLAYER_SHIP_MODEL);
 }
 
 class SharedShipInstancedRenderer {

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { EnemyUnit } from './EnemyUnit';
+import { getAssetPath } from '../paths';
 
 export class Pulsar extends EnemyUnit {
   constructor(scene, spawnPosition) {
@@ -15,7 +16,7 @@ export class Pulsar extends EnemyUnit {
       size: 2.5,
       bodyColor: 0xaa00ff,
       healthBarColor: 0xaa00ff,
-      modelPath: '/models/colossus.glb',
+      modelPath: getAssetPath('models/colossus.glb'),
       cannonOffsets: [
         new THREE.Vector3(-0.8, 0, -1.2),
         new THREE.Vector3(0.8, 0, -1.2),
