@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { Unit } from './Unit';
 import { attachSharedModel } from '../sharedShipModel';
-import { getAssetPath } from '../paths';
+import { getModelPath } from '../paths';
 
 const AIM_DOT_THRESHOLD = 0.9995;
 
@@ -46,7 +46,7 @@ export class EnemyUnit extends Unit {
       targetHeight: this.size * 0.5,
       targetLength: this.size * 1.5,
       rotationY: Math.PI / 2,
-    }, config.modelPath || getAssetPath('models/player_ship.glb')).then((model) => {
+    }, config.modelPath || getModelPath('models/player_ship.glb')).then((model) => {
       if (model) {
         this.fallbackBodyMesh.visible = false;
       }

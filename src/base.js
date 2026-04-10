@@ -3,7 +3,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { Projectile } from './projectile';
 import { Probe } from './units/Probe';
 import { attachCannonModel } from './cannonModel';
-import { getAssetPath } from './paths';
+import { getModelPath } from './paths';
 
 const TEAM_CONFIG = {
   player: {
@@ -206,7 +206,7 @@ export class BaseStation {
 
   loadBaseModel() {
     gltfLoader.load(
-      getAssetPath('models/base.glb'),
+      getModelPath('models/base.glb'),
       (gltf) => {
         this.baseModel = gltf.scene;
         this.fitBaseModel(this.baseModel);

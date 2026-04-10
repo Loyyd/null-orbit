@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { getAssetPath } from './paths';
+import { getModelPath } from './paths';
 
 const gltfLoader = new GLTFLoader();
 let cannonTemplatePromise = null;
@@ -51,7 +51,7 @@ function loadCannonTemplate() {
   if (!cannonTemplatePromise) {
     cannonTemplatePromise = new Promise((resolve, reject) => {
       gltfLoader.load(
-        getAssetPath('models/cannon.glb'),
+        getModelPath('models/cannon.glb'),
         (gltf) => resolve(gltf.scene),
         undefined,
         reject

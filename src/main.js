@@ -18,7 +18,7 @@ import { createGameUi } from './gameUi';
 import { createPlayerAbilities } from './playerAbilities';
 import { createShatterEffectSystem } from './shatterEffect';
 import { CombatSpatialIndex } from './combatSpatialIndex';
-import { getAssetPath } from './paths';
+import { getAssetPath, getModelPath } from './paths';
 
 // --- Setup ---
 const scene = new THREE.Scene();
@@ -245,7 +245,7 @@ function fitStaticModel(model, {
 }
 
 gltfLoader.load(
-  getAssetPath('models/player_ship.glb'),
+  getModelPath('models/player_ship.glb'),
   (gltf) => {
     fallbackPlayerMesh.visible = false;
     playerModel = gltf.scene;
@@ -512,7 +512,7 @@ const rockSpinners = [];
 const obsMat = new THREE.MeshStandardMaterial({ color: 0x8a8a8a, metalness: 0.7, roughness: 0.35 });
 let rocksModelTemplate = null;
 gltfLoader.load(
-  getAssetPath('models/rocks.glb'),
+  getModelPath('models/rocks.glb'),
   (gltf) => {
     rocksModelTemplate = gltf.scene;
     mapData.obstacles.forEach((o) => {
@@ -671,7 +671,7 @@ function registerBombVisuals(bomb, bombModel = null) {
 }
 
 gltfLoader.load(
-  getAssetPath('models/bomb.glb'),
+  getModelPath('models/bomb.glb'),
   (gltf) => {
     bombModelTemplate = gltf.scene;
     bombs.forEach((bomb) => {

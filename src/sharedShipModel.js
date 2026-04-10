@@ -1,12 +1,12 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { getAssetPath } from './paths';
+import { getModelPath } from './paths';
 
 const loader = new GLTFLoader();
 const modelTemplatePromises = new Map();
-const PLAYER_SHIP_MODEL = getAssetPath('models/player_ship.glb');
-const COLOSSUS_MODEL = getAssetPath('models/colossus.glb');
-const STARSHIP_MODEL = getAssetPath('models/starship.glb');
+const PLAYER_SHIP_MODEL = getModelPath('models/player_ship.glb');
+const COLOSSUS_MODEL = getModelPath('models/colossus.glb');
+const STARSHIP_MODEL = getModelPath('models/starship.glb');
 
 function disposeMaterial(material) {
   if (Array.isArray(material)) {
