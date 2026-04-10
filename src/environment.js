@@ -379,7 +379,7 @@ export function createSpace(scene) {
   }
 
   // 1. Deep Space Background
-  scene.background = new THREE.Color(0x07101c);
+  scene.background = new THREE.Color(0x0b1726);
   const battleTexture = createBattlefieldTexture();
   const tacticalFloor = new THREE.Mesh(
     new THREE.PlaneGeometry(220, 360),
@@ -388,9 +388,9 @@ export function createSpace(scene) {
       map: battleTexture,
       emissive: new THREE.Color(0x6fc6f2),
       emissiveMap: battleTexture,
-      emissiveIntensity: 0.78,
+      emissiveIntensity: 0.94,
       transparent: true,
-      opacity: 0.66,
+      opacity: 0.74,
       roughness: 0.98,
       metalness: 0.05,
     })
@@ -413,7 +413,7 @@ export function createSpace(scene) {
         ],
       }),
       transparent: true,
-      opacity: 0.42,
+      opacity: 0.5,
       color: 0x5dc7ff,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
@@ -426,18 +426,18 @@ export function createSpace(scene) {
 
   // 2. Starfield (Points)
   const farStars = createStarField({
-    count: 14000,
+    count: 18000,
     minRadius: 500,
     maxRadius: 1150,
-    size: 1.55,
+    size: 1.85,
     opacity: 1,
   });
   const midStars = createStarField({
-    count: 7000,
+    count: 9500,
     minRadius: 260,
     maxRadius: 620,
-    size: 2,
-    opacity: 0.55,
+    size: 2.35,
+    opacity: 0.82,
     verticalBias: -40,
   });
   const dustField = createDustField();

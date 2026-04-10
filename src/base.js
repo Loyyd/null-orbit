@@ -25,6 +25,9 @@ const TEAM_CONFIG = {
   },
 };
 
+const MAX_BASE_CANNON_UPGRADES = 5;
+const MAX_BASE_SPAWN_UPGRADES = 5;
+
 const gltfLoader = new GLTFLoader();
 
 function forEachObjectMaterial(root, callback) {
@@ -60,6 +63,8 @@ export class BaseStation {
     this.lastSpawnTime = 0;
     this.maxHealth = this.baseConfig.maxHealth ?? 80;
     this.health = this.maxHealth;
+    this.cannonUpgradeLevel = 0;
+    this.spawnUpgradeLevel = 0;
     this.hitRadius = 6.5;
     this.captureCooldownUntil = 0;
     this.isDead = false;
@@ -256,7 +261,7 @@ export class BaseStation {
       targetWidth: 0.7,
       targetHeight: 0.65,
       targetLength: 1.9,
-      rotationY: Math.PI / 2,
+      rotationY: -Math.PI / 2,
       offsetY: 0.05,
       offsetZ: 0.7,
       fallbackMesh: cannon,
@@ -270,6 +275,8 @@ export class BaseStation {
   }
 
   addCannon() {
+    if (!this.canUpgradeCannons()) return false;
+
     const currentCount = this.cannons.length;
     this.cannons.forEach((cannon) => this.mesh.remove(cannon));
     this.cannons = [];
@@ -277,10 +284,33 @@ export class BaseStation {
     for (let i = 0; i < newTotal; i++) {
       this.addCannonMesh(i, newTotal);
     }
+
+    this.cannonUpgradeLevel += 1;
+    return true;
   }
 
   upgradeSpawnRate() {
-    this.spawnInterval = Math.max(4000, this.spawnInterval - 1000);
+    if (!this.canUpgradeSpawnRate()) return false;
+
+    this.spawnInterval = Math.max(4000, this.spawnInterval - 2500);
+    this.spawnUpgradeLevel += 1;
+    return true;
+  }
+
+  canUpgradeCannons() {
+    return this.cannonUpgradeLevel < MAX_BASE_CANNON_UPGRADES;
+  }
+
+  canUpgradeSpawnRate() {
+    return this.spawnUpgradeLevel < MAX_BASE_SPAWN_UPGRADES;
+  }
+
+  getCannonUpgradeLevel() {
+    return this.cannonUpgradeLevel;
+  }
+
+  getSpawnUpgradeLevel() {
+    return this.spawnUpgradeLevel;
   }
 
   takeDamage(amount, currentTime = performance.now()) {

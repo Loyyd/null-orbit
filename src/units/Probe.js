@@ -83,7 +83,12 @@ export class Probe extends Unit {
       if (currentTime - this.lastShotTime > this.shootInterval) {
         const worldPos = new THREE.Vector3();
         this.cannonMesh.getWorldPosition(worldPos);
-        this.fireProjectile(projectiles, worldPos, dir);
+        const shotDir = dir.clone();
+        const scatter = 0.14;
+        shotDir.x += (Math.random() - 0.5) * scatter;
+        shotDir.z += (Math.random() - 0.5) * scatter;
+        shotDir.normalize();
+        this.fireProjectile(projectiles, worldPos, shotDir);
         this.lastShotTime = currentTime;
       }
     } else {

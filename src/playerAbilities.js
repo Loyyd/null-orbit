@@ -6,6 +6,7 @@ export function createPlayerAbilities({
   scene,
   renderer,
   ui,
+  player,
   playerState,
   shieldMesh,
   gameOptions,
@@ -13,6 +14,7 @@ export function createPlayerAbilities({
 }) {
   const purchasedModules = [];
   const yamatoEffects = [];
+  const yamatoShots = [];
 
   function updateModuleBarVisibility() {
     ui.moduleBar.style.display = purchasedModules.length > 0 && !playerState.isDead ? 'flex' : 'none';
@@ -72,7 +74,7 @@ export function createPlayerAbilities({
     const ring = new THREE.Mesh(
       new THREE.RingGeometry(radius * 0.15, radius * 0.2, 48),
       new THREE.MeshBasicMaterial({
-        color: 0x66d9ff,
+        color: 0xff4a4a,
         transparent: true,
         opacity: 0.85,
         side: THREE.DoubleSide,
@@ -86,20 +88,91 @@ export function createPlayerAbilities({
     const flash = new THREE.Mesh(
       new THREE.SphereGeometry(radius * 0.2, 24, 24),
       new THREE.MeshBasicMaterial({
-        color: 0xb8f3ff,
+        color: 0xff3b2f,
         transparent: true,
-        opacity: 0.45,
+        opacity: 0.5,
       })
     );
     flash.position.copy(position);
     flash.position.y = 0.75;
     scene.add(flash);
 
+    const shockwave = new THREE.Mesh(
+      new THREE.CircleGeometry(radius * 0.34, 48),
+      new THREE.MeshBasicMaterial({
+        color: 0xff8a4a,
+        transparent: true,
+        opacity: 0.42,
+        side: THREE.DoubleSide,
+      })
+    );
+    shockwave.rotation.x = -Math.PI / 2;
+    shockwave.position.copy(position);
+    shockwave.position.y = 0.08;
+    scene.add(shockwave);
+
     yamatoEffects.push({
       ring,
       flash,
+      shockwave,
       age: 0,
-      duration: 0.45,
+      duration: 0.55,
+    });
+  }
+
+  function getYamatoLaunchPosition() {
+    const launchOffset = new THREE.Vector3(0, 0.7, -1.6);
+    return player.localToWorld(launchOffset.clone());
+  }
+
+  function spawnYamatoShot(targetPosition, radius, damage) {
+    const launchPosition = getYamatoLaunchPosition();
+    const direction = new THREE.Vector3().subVectors(targetPosition, launchPosition).normalize();
+
+    const shot = new THREE.Mesh(
+      new THREE.CapsuleGeometry(0.22, 1.8, 6, 10),
+      new THREE.MeshBasicMaterial({
+        color: 0xff2a2a,
+        toneMapped: false,
+      })
+    );
+    shot.position.copy(launchPosition);
+    shot.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction);
+
+    const glow = new THREE.Mesh(
+      new THREE.CapsuleGeometry(0.42, 2.4, 6, 10),
+      new THREE.MeshBasicMaterial({
+        color: 0xff6a3d,
+        transparent: true,
+        opacity: 0.45,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        toneMapped: false,
+      })
+    );
+    shot.add(glow);
+    scene.add(shot);
+
+    yamatoShots.push({
+      mesh: shot,
+      glow,
+      targetPosition: targetPosition.clone(),
+      direction,
+      speed: 1.45,
+      radius,
+      damage,
+    });
+  }
+
+  function resolveYamatoImpact(position, radius, damage) {
+    spawnYamatoEffect(position, radius);
+
+    getAbilityTargets().forEach((target) => {
+      if (target.isDead) return;
+      const impactRadius = radius + (target.hitRadius || 0);
+      if (target.mesh.position.distanceTo(position) <= impactRadius) {
+        target.takeDamage(damage);
+      }
     });
   }
 
@@ -111,16 +184,7 @@ export function createPlayerAbilities({
     const radius = gameOptions.modules.yamatoRadius;
     const damage = gameOptions.modules.yamatoDamage;
     yamatoModule.lastUsedAt = performance.now();
-    spawnYamatoEffect(position, radius);
-
-    getAbilityTargets().forEach((target) => {
-      if (target.isDead) return;
-      const impactRadius = radius + (target.hitRadius || 0);
-      if (target.mesh.position.distanceTo(position) <= impactRadius) {
-        target.takeDamage(damage);
-      }
-    });
-
+    spawnYamatoShot(position, radius, damage);
     clearSelection();
   }
 
@@ -197,6 +261,27 @@ export function createPlayerAbilities({
   }
 
   function updateYamatoEffects(deltaTime) {
+    for (let i = yamatoShots.length - 1; i >= 0; i--) {
+      const shot = yamatoShots[i];
+      const stepDistance = shot.speed * deltaTime * 60;
+      const remaining = shot.mesh.position.distanceTo(shot.targetPosition);
+
+      if (remaining <= stepDistance) {
+        const impactPosition = shot.targetPosition.clone();
+        impactPosition.y = 0;
+        scene.remove(shot.mesh);
+        shot.glow.geometry.dispose();
+        shot.glow.material.dispose();
+        shot.mesh.geometry.dispose();
+        shot.mesh.material.dispose();
+        yamatoShots.splice(i, 1);
+        resolveYamatoImpact(impactPosition, shot.radius, shot.damage);
+        continue;
+      }
+
+      shot.mesh.position.addScaledVector(shot.direction, stepDistance);
+    }
+
     for (let i = yamatoEffects.length - 1; i >= 0; i--) {
       const effect = yamatoEffects[i];
       effect.age += deltaTime;
@@ -205,10 +290,13 @@ export function createPlayerAbilities({
       if (t >= 1) {
         scene.remove(effect.ring);
         scene.remove(effect.flash);
+        scene.remove(effect.shockwave);
         effect.ring.geometry.dispose();
         effect.ring.material.dispose();
         effect.flash.geometry.dispose();
         effect.flash.material.dispose();
+        effect.shockwave.geometry.dispose();
+        effect.shockwave.material.dispose();
         yamatoEffects.splice(i, 1);
         continue;
       }
@@ -219,7 +307,11 @@ export function createPlayerAbilities({
 
       const flashScale = 1 + (t * 2.4);
       effect.flash.scale.setScalar(flashScale);
-      effect.flash.material.opacity = 0.45 * (1 - t);
+      effect.flash.material.opacity = 0.5 * (1 - t);
+
+      const shockwaveScale = 0.55 + (t * 2.8);
+      effect.shockwave.scale.setScalar(shockwaveScale);
+      effect.shockwave.material.opacity = 0.42 * (1 - t);
     }
   }
 

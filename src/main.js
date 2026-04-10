@@ -29,7 +29,7 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.62;
+renderer.toneMappingExposure = 3.35;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 document.body.appendChild(renderer.domElement);
@@ -43,21 +43,21 @@ const gameOptions = loadGameOptions();
 
 // --- Post-Processing ---
 const renderScene = new RenderPass(scene, camera);
-const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.38, 0.58, 0.8);
+const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.82, 0.66, 0.68);
 const vignettePass = new ShaderPass(VignetteShader);
-vignettePass.uniforms.offset.value = 0.84;
-vignettePass.uniforms.darkness.value = 0.35;
+vignettePass.uniforms.offset.value = 0.15;
+vignettePass.uniforms.darkness.value = 0.03;
 const composer = new EffectComposer(renderer);
 composer.addPass(renderScene);
 composer.addPass(bloomPass);
 composer.addPass(vignettePass);
 
 // --- Lighting ---
-const ambientLight = new THREE.AmbientLight(0xd8eaff, 0.56);
+const ambientLight = new THREE.AmbientLight(0xd8eaff, 10.34);
 scene.add(ambientLight);
-const hemisphereLight = new THREE.HemisphereLight(0xb5e6ff, 0x2f4866, 1.38);
+const hemisphereLight = new THREE.HemisphereLight(0xb5e6ff, 0x2f4866, 0.82);
 scene.add(hemisphereLight);
-const directionalLight = new THREE.DirectionalLight(0xfff1d5, 2.1);
+const directionalLight = new THREE.DirectionalLight(0xfff1d5, 1.18);
 directionalLight.position.set(52, 90, 64);
 directionalLight.castShadow = true;
 directionalLight.shadow.mapSize.set(2048, 2048);
@@ -70,7 +70,7 @@ directionalLight.shadow.camera.bottom = -110;
 directionalLight.shadow.bias = -0.00018;
 directionalLight.shadow.normalBias = 0.03;
 scene.add(directionalLight);
-const rimLight = new THREE.DirectionalLight(0x8fddff, 1.05);
+const rimLight = new THREE.DirectionalLight(0x8fddff, 0.52);
 rimLight.position.set(-68, 42, -90);
 scene.add(rimLight);
 const gltfLoader = new GLTFLoader();
@@ -91,6 +91,7 @@ const ACCELERATION_PRE_TIER_MAX = 1;
 const ACCELERATION_POST_TIER_MAX = 4;
 const THRUSTER_ACCELERATION_UPGRADE_STEP = 0.001;
 const THRUSTER_ROTATION_UPGRADE_STEP = 0.001;
+let activeFriendlyBase = null;
 
 const playerState = {
   acceleration: gameOptions.player.acceleration,
@@ -314,12 +315,20 @@ function canUpgradeAcceleration() {
   return playerState.accelerationUpgradeLevel < getAccelerationUnlockedMax();
 }
 
+function canUpgradeBaseCannons() {
+  return Boolean(activeFriendlyBase?.canUpgradeCannons());
+}
+
+function canUpgradeBaseSpawn() {
+  return Boolean(activeFriendlyBase?.canUpgradeSpawnRate());
+}
+
 function syncUpgradeUi() {
   const canAfford = canAffordUpgrade();
   ui.setUpgradeButtonDisabled('up-cannons', !canAfford || !canUpgradeRapidFire());
   ui.setUpgradeButtonDisabled('up-speed', !canAfford || !canUpgradeAcceleration());
-  ui.setUpgradeButtonDisabled('base-up-cannons', !canAfford);
-  ui.setUpgradeButtonDisabled('base-up-spawn', !canAfford);
+  ui.setUpgradeButtonDisabled('base-up-cannons', !canAfford || !canUpgradeBaseCannons());
+  ui.setUpgradeButtonDisabled('base-up-spawn', !canAfford || !canUpgradeBaseSpawn());
   ui.setUpgradeButtonDisabled('base-up-shield', playerState.abilities.shieldOwned || !canAfford);
   ui.setUpgradeButtonDisabled('base-up-yamato', playerState.abilities.yamatoOwned || !canAfford);
   ui.setUpgradeButtonDisabled('up-tier2', playerState.currentTier >= 2 || !canAfford);
@@ -338,6 +347,16 @@ function syncUpgradeUi() {
     current: playerState.currentTier >= 2 ? 1 : 0,
     total: 1,
     unlocked: 1,
+  });
+  ui.setUpgradeProgress('base-up-cannons', {
+    current: activeFriendlyBase?.getCannonUpgradeLevel?.() ?? 0,
+    total: 5,
+    unlocked: 5,
+  });
+  ui.setUpgradeProgress('base-up-spawn', {
+    current: activeFriendlyBase?.getSpawnUpgradeLevel?.() ?? 0,
+    total: 5,
+    unlocked: 5,
   });
   ui.setUpgradeProgress('base-up-shield', {
     current: playerState.abilities.shieldOwned ? 1 : 0,
@@ -410,13 +429,23 @@ const ui = createGameUi({
     syncUpgradeUi();
   },
   onBaseUpgradeCannons: () => {
+    if (!canUpgradeBaseCannons()) return;
     if (!spendPlasma()) return;
-    activeFriendlyBase.addCannon();
+    if (!activeFriendlyBase.addCannon()) {
+      playerState.plasmaCells += UPGRADE_COST;
+      ui.setCurrency(playerState.plasmaCells);
+      return;
+    }
     syncUpgradeUi();
   },
   onBaseUpgradeSpawn: () => {
+    if (!canUpgradeBaseSpawn()) return;
     if (!spendPlasma()) return;
-    activeFriendlyBase.upgradeSpawnRate();
+    if (!activeFriendlyBase.upgradeSpawnRate()) {
+      playerState.plasmaCells += UPGRADE_COST;
+      ui.setCurrency(playerState.plasmaCells);
+      return;
+    }
     syncUpgradeUi();
   },
 });
@@ -636,11 +665,12 @@ const projectiles = [];
 const probes = [];
 const keys = { w: false, a: false, s: false, d: false };
 const targetCameraPos = new THREE.Vector3();
-let activeFriendlyBase = base;
+activeFriendlyBase = base;
 abilities = createPlayerAbilities({
   scene,
   renderer,
   ui,
+  player,
   playerState,
   shieldMesh,
   gameOptions,

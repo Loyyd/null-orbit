@@ -17,7 +17,7 @@ export class Cannon {
       targetWidth: 0.42,
       targetHeight: 0.42,
       targetLength: 1.15,
-      rotationY: Math.PI / 2,
+      rotationY: -Math.PI / 2,
       offsetY: 0.02,
       offsetZ: -0.05,
     });
@@ -32,8 +32,6 @@ export class Cannon {
   }
 
   update(currentTime, targets, projectiles) {
-    if (currentTime - this.lastShotTime < this.fireRate) return;
-
     const worldPos = new THREE.Vector3();
     this.mesh.getWorldPosition(worldPos);
 
@@ -50,18 +48,25 @@ export class Cannon {
       }
     }
 
-    if (nearestEnemy) {
-      const dir = new THREE.Vector3().subVectors(nearestEnemy.mesh.position, worldPos).normalize();
-      
-      // Scatter effect (approx 90% precision)
-      const scatter = 0.12;
-      dir.x += (Math.random() - 0.5) * scatter;
-      dir.z += (Math.random() - 0.5) * scatter;
-      dir.normalize();
-
-      projectiles.push(new Projectile(this.scene, worldPos, dir, 0x00ffff, false, this.damage, this.range * 2));
-      this.lastShotTime = currentTime;
+    if (!nearestEnemy) {
+      this.mesh.rotation.set(0, 0, 0);
+      return;
     }
+
+    this.mesh.lookAt(nearestEnemy.mesh.position);
+
+    if (currentTime - this.lastShotTime < this.fireRate) return;
+
+    const dir = new THREE.Vector3().subVectors(nearestEnemy.mesh.position, worldPos).normalize();
+
+    // Scatter effect (approx 90% precision)
+    const scatter = 0.18;
+    dir.x += (Math.random() - 0.5) * scatter;
+    dir.z += (Math.random() - 0.5) * scatter;
+    dir.normalize();
+
+    projectiles.push(new Projectile(this.scene, worldPos, dir, 0x00ffff, false, this.damage, this.range * 2));
+    this.lastShotTime = currentTime;
   }
 
   remove() {
