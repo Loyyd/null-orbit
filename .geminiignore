@@ -18,3 +18,4 @@ pnpm-lock.yaml
 # Assets (binary files can be large/unreadable)
 src/assets/
 public/
+#test
