@@ -12,6 +12,26 @@ function disposeMaterial(material) {
   material?.dispose?.();
 }
 
+function shouldReduceUnitRoughness(modelPath) {
+  return modelPath === '/models/player_ship.glb'
+    || modelPath === '/models/colossus.glb'
+    || modelPath === '/models/starship.glb';
+}
+
+function tuneUnitModelMaterials(root, modelPath) {
+  if (!shouldReduceUnitRoughness(modelPath)) return;
+
+  root.traverse((child) => {
+    if (!child.isMesh || !child.material) return;
+
+    const materials = Array.isArray(child.material) ? child.material : [child.material];
+    materials.forEach((material) => {
+      if (!material || !('roughness' in material)) return;
+      material.roughness = Math.max(0, (material.roughness ?? 1) * 3.0);
+    });
+  });
+}
+
 export function fitModelToBounds(model, {
   targetWidth,
   targetHeight,
@@ -55,6 +75,7 @@ export function loadSharedModelTemplate(modelPath = '/models/player_ship.glb') {
 export async function cloneSharedModel(options, modelPath = '/models/player_ship.glb') {
   const template = await loadSharedModelTemplate(modelPath);
   const model = template.clone(true);
+  tuneUnitModelMaterials(model, modelPath);
   fitModelToBounds(model, options);
   return model;
 }

@@ -11,6 +11,7 @@ export function createGameUi({
   onBloomInput,
   onAmbientInput,
   onDebugSkipWave,
+  onDebugSpawnStarship,
   onUpgradeCannons,
   onUpgradeSpeed,
   onUpgradeTier2,
@@ -176,7 +177,10 @@ export function createGameUi({
   debugInfo.innerHTML = `
     <div id="debug-header">
       <div id="debug-title">DEBUG MODE</div>
-      <button type="button" id="debug-skip-wave-btn" aria-label="Skip to next wave">+</button>
+      <div id="debug-actions">
+        <button type="button" id="debug-spawn-starship-btn" aria-label="Spawn a starship">S</button>
+        <button type="button" id="debug-skip-wave-btn" aria-label="Skip to next wave">+</button>
+      </div>
     </div>
     <div id="debug-body"></div>
   `;
@@ -235,6 +239,7 @@ export function createGameUi({
     tooltipTitle: upgradeTooltip.querySelector('#upgrade-tooltip-title'),
     tooltipDescription: upgradeTooltip.querySelector('#upgrade-tooltip-description'),
     tooltipCostValue: upgradeTooltip.querySelector('#upgrade-tooltip-cost-value'),
+    debugSpawnStarshipButton: debugInfo.querySelector('#debug-spawn-starship-btn'),
     debugSkipWaveButton: debugInfo.querySelector('#debug-skip-wave-btn'),
     debugBody: debugInfo.querySelector('#debug-body'),
   };
@@ -289,6 +294,7 @@ export function createGameUi({
   upgradeButtonsById['base-up-spawn'].button.onclick = onBaseUpgradeSpawn;
   elements.debugEditorLink.onclick = () => window.open('/editor.html', '_blank', 'noopener,noreferrer');
   elements.debugOptionsLink.onclick = () => window.open('/options.html', '_blank', 'noopener,noreferrer');
+  elements.debugSpawnStarshipButton.onclick = onDebugSpawnStarship;
   elements.debugSkipWaveButton.onclick = onDebugSkipWave;
 
   return {

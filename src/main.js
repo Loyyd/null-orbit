@@ -53,11 +53,11 @@ composer.addPass(bloomPass);
 composer.addPass(vignettePass);
 
 // --- Lighting ---
-const ambientLight = new THREE.AmbientLight(0xd8eaff, 10.34);
+const ambientLight = new THREE.AmbientLight(0xd8eaff, 1.34);
 scene.add(ambientLight);
 const hemisphereLight = new THREE.HemisphereLight(0xb5e6ff, 0x2f4866, 0.82);
 scene.add(hemisphereLight);
-const directionalLight = new THREE.DirectionalLight(0xfff1d5, 1.18);
+const directionalLight = new THREE.DirectionalLight(0xfff1d5, 1.1);
 directionalLight.position.set(52, 90, 64);
 directionalLight.castShadow = true;
 directionalLight.shadow.mapSize.set(2048, 2048);
@@ -91,6 +91,7 @@ const ACCELERATION_PRE_TIER_MAX = 1;
 const ACCELERATION_POST_TIER_MAX = 4;
 const THRUSTER_ACCELERATION_UPGRADE_STEP = 0.001;
 const THRUSTER_ROTATION_UPGRADE_STEP = 0.001;
+const THRUSTER_TURNING_BONUS_UPGRADE_STEP = 0.0006;
 let activeFriendlyBase = null;
 
 const playerState = {
@@ -390,6 +391,14 @@ const ui = createGameUi({
   onDebugSkipWave: () => {
     waveManager.skipWave();
   },
+  onDebugSpawnStarship: () => {
+    const spawnPosition = new THREE.Vector3(
+      player.position.x + ((Math.random() - 0.5) * 24),
+      0,
+      player.position.z - 72
+    );
+    enemyController.spawn(spawnPosition, 'starship', waveManager.waveLevel);
+  },
   onUpgradeCannons: () => {
     if (!canUpgradeRapidFire()) return;
     if (!spendPlasma()) return;
@@ -402,7 +411,7 @@ const ui = createGameUi({
     if (!spendPlasma()) return;
     playerState.accelerationUpgradeLevel += 1;
     playerState.acceleration += THRUSTER_ACCELERATION_UPGRADE_STEP;
-    playerState.rotationSpeed += THRUSTER_ROTATION_UPGRADE_STEP;
+    playerState.rotationSpeed += THRUSTER_ROTATION_UPGRADE_STEP + THRUSTER_TURNING_BONUS_UPGRADE_STEP;
     syncUpgradeUi();
   },
   onUpgradeTier2: () => {

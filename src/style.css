@@ -603,6 +603,13 @@ canvas {
   letter-spacing: 0.08em;
 }
 
+#debug-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+#debug-spawn-starship-btn,
 #debug-skip-wave-btn {
   width: 22px;
   height: 22px;
@@ -616,6 +623,7 @@ canvas {
   padding: 0;
 }
 
+#debug-spawn-starship-btn:hover,
 #debug-skip-wave-btn:hover {
   background: rgba(0, 255, 120, 0.22);
   border-color: rgba(120, 255, 170, 0.8);
