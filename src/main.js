@@ -109,7 +109,7 @@ const playerState = {
     yamatoOwned: false,
     selectedModuleId: null,
   },
-  plasmaCells: 1000,
+  plasmaCells: 10,
 };
 const gameState = {
   isPaused: false,

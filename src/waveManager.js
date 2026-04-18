@@ -7,6 +7,7 @@ export class WaveManager {
     this.spawnTimer = 0;
     this.elapsedTime = 0;
     this.waveLevel = 1;
+    this.highestComputedWave = 1;
     this.debugWaveOverride = null;
   }
 
@@ -18,7 +19,8 @@ export class WaveManager {
     const distanceWave = 1 + Math.floor(distancePush / zoneDistance);
     const timeWave = 1 + Math.floor(this.elapsedTime / Math.max(timePerWaveIncrease, 1));
     const computedWave = Math.max(distanceWave, timeWave);
-    this.waveLevel = Math.max(computedWave, this.debugWaveOverride ?? 1);
+    this.highestComputedWave = Math.max(this.highestComputedWave, computedWave);
+    this.waveLevel = Math.max(this.highestComputedWave, this.debugWaveOverride ?? 1);
 
     this.spawnTimer += deltaTime;
     const spawnThreshold = Math.max(
